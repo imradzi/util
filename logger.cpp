@@ -48,7 +48,6 @@ void wpAssertHandler(const wxString &file, int line, const wxString &func, const
     std::stringstream ss;
     ss << "wxAssert: " << file << ":" << line << " " << func << "(" << cond << ") => " << msg;
     ShowLog(ss.str());
-    exit(1);
 }
 #else
 void wpAssertHandler(const wxString &, int, const wxString &, const wxString &, const wxString &) {}
