@@ -1,30 +1,23 @@
 #pragma once
-#include <list>
 #include <memory>
 #include <sstream>
-#include <thread>
 #include <chrono>
 #include <mutex>
 #include <iostream>
-#include "messageQueue.h"
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/daily_file_sink.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 
 extern std::string loggerAppCode;
 
 class Logger {
-    static std::shared_ptr<Logger> InitializeLogger(const std::string &fileName, bool toShow) {
-        auto l = std::make_shared<Logger>(fileName, toShow);
-        return l;
-    }
-    static void UnInitializeLogger(std::shared_ptr<Logger> &l) {
-        l.reset();
-    }
+    static std::shared_ptr<Logger> InitializeLogger(const std::string &fileName, bool toShow);
+    static void UnInitializeLogger(std::shared_ptr<Logger> &l);
 
     std::string filename;
     static std::shared_ptr<Logger> logger;
     static std::recursive_mutex loggerMutex;
-    long nRec;
-    MQ::Queue<std::string> messageQueue;
-    std::thread runningThread;
+    std::shared_ptr<spdlog::logger> spdLogger;
     bool toShow {false};
 
 public:
@@ -34,7 +27,6 @@ public:
     static bool toShowMillisecond;
     static bool showAbsTime;
     static bool showThreadID;
-    //std::atomic<bool> closingDown {false};
 
     static std::string GetNowInString() {
         return GetTimeInString(std::chrono::system_clock::now());
@@ -42,7 +34,6 @@ public:
     static std::string GetTimeInString(std::chrono::system_clock::time_point now);
 
     void Write(const std::string &msg);
-    void Entry();
     
     static std::shared_ptr<Logger> Initialize(const std::string &fileName) {
         std::lock_guard _lock(loggerMutex);
@@ -57,7 +48,6 @@ public:
         std::lock_guard _lock(loggerMutex);
         UnInitializeLogger(logger); 
     }
-    //static void log(const std::string &m, ...);
     static bool IsLogRunning() { return logger != nullptr; }
     static void logMessage(const std::string &m) {
         std::lock_guard _lock(loggerMutex);
