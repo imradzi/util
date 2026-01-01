@@ -2,73 +2,43 @@
 #include <memory>
 #include <sstream>
 #include <chrono>
-#include <mutex>
 #include <iostream>
-#include <spdlog/spdlog.h>
-#include <spdlog/sinks/daily_file_sink.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
+#include "../wpSQL/include/logging.hpp"
 
 extern std::string loggerAppCode;
 
+// Adapter class to maintain backward compatibility with existing Logger API
 class Logger {
-    static std::shared_ptr<Logger> InitializeLogger(const std::string &fileName, bool toShow);
-    static void UnInitializeLogger(std::shared_ptr<Logger> &l);
-
-    std::string filename;
-    static std::shared_ptr<Logger> logger;
-    static std::recursive_mutex loggerMutex;
-    std::shared_ptr<spdlog::logger> spdLogger;
-    bool toShow {false};
-
+    static std::size_t GetThreadIndex(const std::thread::id id);   
 public:
-    Logger(const std::string &fname, bool toShow);
-    ~Logger();
     static const char *timeFormat, *dateFormat;
     static bool toShowMillisecond;
     static bool showAbsTime;
     static bool showThreadID;
 
-    static std::string GetNowInString() {
-        return GetTimeInString(std::chrono::system_clock::now());
-    }
-    static std::string GetTimeInString(std::chrono::system_clock::time_point now);
-
-    void Write(const std::string &msg);
-    
     static std::shared_ptr<Logger> Initialize(const std::string &fileName) {
-        std::lock_guard _lock(loggerMutex);
-        return logger = InitializeLogger(fileName, true); 
+        DB::Logger::initialize("ppos", "trace");
+        return nullptr;  // Return nullptr as DB::Logger is static
     }
     static std::shared_ptr<Logger> Initialize(bool toShow=false) {
-        std::lock_guard _lock(loggerMutex);
-        return logger = InitializeLogger("", toShow); 
+        DB::Logger::initialize("ppos", "trace");
+        return nullptr;  // Return nullptr as DB::Logger is static
     }
 
-    static void UnInitialize() { 
-        std::lock_guard _lock(loggerMutex);
-        UnInitializeLogger(logger); 
+    static void UnInitialize() {
+        // DB::Logger uses RAII, no explicit cleanup needed
     }
-    static bool IsLogRunning() { return logger != nullptr; }
+    static bool IsLogRunning() { return DB::Logger::get() != nullptr; }
     static void logMessage(const std::string &m) {
-        std::lock_guard _lock(loggerMutex);
-        if (logger) {
-            logger->Write(m);
-        } else
-            std::cout << m << std::endl;
+        DB::Logger::info(m);
     }
     static bool IsLogActive() { 
-        std::lock_guard _lock(loggerMutex);
-        return logger != nullptr; 
+        return DB::Logger::get() != nullptr; 
     }
     static std::string GetThreadID();
 };
 
 inline void wpLogMessage(const std::string &s) { Logger::logMessage(s); }
-
-//inline void StartMessageLogger(const std::string &fileName) {
-//	logger = new Logger(fileName);
-//	logger->Run();
-//}
 
 class LoggerTracker {
     std::chrono::steady_clock::time_point tStart;
