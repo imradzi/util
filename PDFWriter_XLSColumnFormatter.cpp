@@ -37,7 +37,7 @@
 #include "ExcelReader.h"
 #include "PDFWriter.h"
 #include "xmlParser.h"
-#include "logger.h"
+#include "logger/logger.h"
 
 double DB::XLSColumnFormatter::GetDouble(int i) {
     wxASSERT(i >= 0 && i < int(defArray.size()));

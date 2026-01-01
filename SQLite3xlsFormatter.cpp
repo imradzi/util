@@ -38,7 +38,7 @@
 #include "ExcelReader.h"
 #include "PDFWriter.h"
 #include "xmlParser.h"
-#include "logger.h"
+#include "logger/logger.h"
 #include "SQLite3xlsFormatter.h"
 
 bool g_useXLSXformat = false;
@@ -784,7 +784,7 @@ int64_t ReportGenerator::Generator::GetReturnData(std::shared_ptr<wpSQLResultSet
             }
         }
     } catch (...) {
-        ShowLog("GetReturnData throw exception");
+        LOG_ERROR("GetReturnData throw exception");
     }
     return nRows;
 }
