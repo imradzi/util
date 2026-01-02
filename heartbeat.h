@@ -14,6 +14,7 @@ class HeartBeat {
     std::function<void(boost::system::error_code)> timer_handler;
     std::atomic<uint64_t> beatCounter {0};
     std::atomic<bool> isPaused {false};
+    std::atomic<bool> isShutdown {false};
     boost::asio::io_context io;
     boost::asio::steady_timer timer;
     std::thread thread;
@@ -25,5 +26,3 @@ public:
     void Beat(bool stopPause = true);
     void Pause();
 };
-
-extern HeartBeat minuteBeater;
