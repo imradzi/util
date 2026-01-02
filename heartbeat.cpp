@@ -27,7 +27,7 @@ HeartBeat::~HeartBeat() {
 void HeartBeat::Beat(bool stopPause) {
     {
         std::lock_guard lock(mtx);
-        isTriggered = true;
+        beatCounter.fetch_add(1, std::memory_order_release);
         if (stopPause) isPaused = false;
     }
     cv.notify_all();
@@ -35,9 +35,9 @@ void HeartBeat::Beat(bool stopPause) {
 
 void HeartBeat::Wait() {
     std::unique_lock lock(mtx);
-    isTriggered = false;
+    uint64_t currentBeat = beatCounter.load(std::memory_order_acquire);
     cv.wait(lock, [&] {
-        return !isPaused.load() && isTriggered.load();
+        return !isPaused.load() && beatCounter.load(std::memory_order_acquire) > currentBeat;
     });
 }
 
