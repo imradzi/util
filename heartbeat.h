@@ -26,3 +26,19 @@ public:
     void Beat(bool stopPause = true);
     void Pause();
 };
+
+class WakeableSleeper {
+    std::mutex cv_mtx;
+    std::condition_variable cv;
+    std::atomic<bool> &isShutdown;
+public:
+    WakeableSleeper(std::atomic<bool> &shutdownFlag) : isShutdown(shutdownFlag) {}
+
+    template<typename Rep, typename Period>
+    void sleep_for(const std::chrono::duration<Rep, Period>& dur) {
+        std::unique_lock<std::mutex> lock(cv_mtx);
+        cv.wait_for(lock, dur, [this] {
+            return isShutdown.load();
+        });
+    }
+};
