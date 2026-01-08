@@ -38,7 +38,7 @@ void HeartBeat::Wait() {
     uint64_t currentBeat = beatCounter.load(std::memory_order_acquire);
     cv.wait(lock, [&] {
         return isShutdown.load(std::memory_order_acquire) || 
-               (!isPaused.load() && beatCounter.load(std::memory_order_acquire) > currentBeat);
+               (!isPaused.load(std::memory_order_acquire) && beatCounter.load(std::memory_order_acquire) > currentBeat);
     });
 }
 
