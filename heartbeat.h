@@ -38,7 +38,7 @@ public:
     void sleep_for(const std::chrono::duration<Rep, Period>& dur) {
         std::unique_lock<std::mutex> lock(cv_mtx);
         cv.wait_for(lock, dur, [this] {
-            return isShutdown.load();
+            return isShutdown.load(std::memory_order_acquire);
         });
     }
 };
