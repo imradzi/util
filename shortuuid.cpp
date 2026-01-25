@@ -1,4 +1,3 @@
-#include "precompiled/libnet.h"
 
 // Base64URL encoding (URL-safe, no padding)
 static std::string base64url_encode(const unsigned char* data, size_t len) {

@@ -10,7 +10,7 @@ class ExcelReader;
 #include "guid.h"
 #include "net.h"
 #include "logger/logger.h"
-#include "wpSQLDatabase.h"
+#include "wpSQL/include/wpSQLDatabase.h"
 #include "rDb.h"
 
 extern bool g_useXLSXformat;
