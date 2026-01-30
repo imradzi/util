@@ -149,5 +149,13 @@ namespace MQ {
             std::this_thread::sleep_for(300ms);
             removeFromList(list);
         }
+
+        void closeAll() {
+            std::lock_guard<std::recursive_mutex> __lock(mtx);
+            for (auto &x : list) {
+                if (x.second.ob) x.second.ob->close();
+            }
+            list.clear();
+        }
     };
 }
