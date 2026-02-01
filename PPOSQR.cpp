@@ -20,7 +20,10 @@
 #include "wx/dcmemory.h"
 
 #include <memory>
+#include <vector>
+#include <zlib.h>
 #include "PPOSQR.h"
+#include "encrypt64.h"
 
 using namespace PPOS;
 
@@ -91,6 +94,95 @@ void QR::draw(std::function<void(int x, int y)> fnDraw) {
             if (qr->getModule(x, y)) fnDraw(x, y);
         }
     }
+}
+
+// Helper to write big-endian 32-bit value
+static void writeBE32(std::vector<uint8_t>& out, uint32_t val) {
+    out.push_back((val >> 24) & 0xFF);
+    out.push_back((val >> 16) & 0xFF);
+    out.push_back((val >> 8) & 0xFF);
+    out.push_back(val & 0xFF);
+}
+
+// Helper to write PNG chunk
+static void writePNGChunk(std::vector<uint8_t>& out, const char* type, const std::vector<uint8_t>& data) {
+    writeBE32(out, static_cast<uint32_t>(data.size()));
+    size_t typeStart = out.size();
+    for (int i = 0; i < 4; i++) out.push_back(type[i]);
+    out.insert(out.end(), data.begin(), data.end());
+    // CRC32 over type + data
+    uint32_t crc = crc32(0L, Z_NULL, 0);
+    crc = crc32(crc, out.data() + typeStart, 4 + data.size());
+    writeBE32(out, crc);
+}
+
+std::string QR::getPNGBase64(int scale, int border, bool circular) {
+    int qrSize = qr->getSize();
+    int imgSize = (qrSize + border * 2) * scale;
+    double radius = scale / 2.0;
+    double radiusSq = radius * radius;
+    
+    // Create raw image data (1 byte per pixel: 0=black, 255=white)
+    std::vector<uint8_t> rawData;
+    rawData.reserve(imgSize * (imgSize + 1));  // +1 for filter byte per row
+    
+    for (int py = 0; py < imgSize; py++) {
+        rawData.push_back(0);  // PNG filter byte (None)
+        for (int px = 0; px < imgSize; px++) {
+            int qx = px / scale - border;
+            int qy = py / scale - border;
+            bool isBlack = false;
+            
+            if (qx >= 0 && qx < qrSize && qy >= 0 && qy < qrSize && qr->getModule(qx, qy)) {
+                if (circular) {
+                    // Calculate distance from center of this QR module
+                    double centerX = (qx + border) * scale + radius;
+                    double centerY = (qy + border) * scale + radius;
+                    double dx = px - centerX + 0.5;  // +0.5 for pixel center
+                    double dy = py - centerY + 0.5;
+                    isBlack = (dx * dx + dy * dy) <= radiusSq;
+                } else {
+                    isBlack = true;
+                }
+            }
+            rawData.push_back(isBlack ? 0 : 255);
+        }
+    }
+    
+    // Compress with zlib (deflate)
+    uLongf compressedSize = compressBound(rawData.size());
+    std::vector<uint8_t> compressed(compressedSize);
+    compress2(compressed.data(), &compressedSize, rawData.data(), rawData.size(), Z_BEST_COMPRESSION);
+    compressed.resize(compressedSize);
+    
+    // Build PNG file
+    std::vector<uint8_t> png;
+    
+    // PNG signature
+    const uint8_t signature[] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+    png.insert(png.end(), signature, signature + 8);
+    
+    // IHDR chunk
+    std::vector<uint8_t> ihdr;
+    writeBE32(ihdr, imgSize);  // width
+    writeBE32(ihdr, imgSize);  // height
+    ihdr.push_back(8);         // bit depth
+    ihdr.push_back(0);         // color type (grayscale)
+    ihdr.push_back(0);         // compression method
+    ihdr.push_back(0);         // filter method
+    ihdr.push_back(0);         // interlace method
+    writePNGChunk(png, "IHDR", ihdr);
+    
+    // IDAT chunk (compressed image data wrapped in zlib format)
+    // Note: compress2 already produces zlib-format data
+    writePNGChunk(png, "IDAT", compressed);
+    
+    // IEND chunk
+    writePNGChunk(png, "IEND", {});
+    
+    // Convert to base64
+    std::string pngStr(png.begin(), png.end());
+    return UsingBoost::encode(pngStr);
 }
 wxSize QR::size() {
     auto w = qr->getSize();
