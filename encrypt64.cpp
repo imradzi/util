@@ -16,6 +16,7 @@
 #include <openssl/bio.h>
 #include <openssl/evp.h>
 #include <openssl/sha.h>
+#include <fmt/format.h>
 
 static char* base64_encode(const unsigned char* input, int length) {
     // Create a memory BIO to hold raw data

@@ -12,6 +12,8 @@ class ExcelReader;
 #include "logger/logger.h"
 #include "wpSQL/include/wpSQLDatabase.h"
 #include "rDb.h"
+#include "ppos.grpc.pb.h"
+#include "ppos.pb.h"
 
 extern bool g_useXLSXformat;
 

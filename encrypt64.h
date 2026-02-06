@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
-
+#include <vector>
+#include <cstdint>
 namespace UsingBeast {
     std::vector<uint8_t> base64_decode(const std::string& input);
     std::string clean_base64(const std::string& input);

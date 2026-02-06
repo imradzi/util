@@ -426,7 +426,7 @@ std::tuple<double, int> ReportPDF::WriteLetterHead(const std::wstring &companyNa
         SetLeftMargin(x0 / 2);
         SetRightMargin(x0 / 2);
         constexpr auto ttl = L"LHDN e-invoice";
-        ShowLog(fmt::format("printing QR: {}", to_string(eInvoiceQRstring)));
+        LOG_INFO("printing QR: {}", to_string(eInvoiceQRstring));
         SetXY(x0+110, y0);
         Cell(0, 0, ttl, wxPDF_BORDER_NONE, 0, 0, 0);
         createQRBitmap(x0+100, y0+5, eInvoiceQRstring);
@@ -435,7 +435,7 @@ std::tuple<double, int> ReportPDF::WriteLetterHead(const std::wstring &companyNa
         //     Image("eInvoice", bitmap.ConvertToImage(), x0+110, y0);
         //     if (nLines == 0) nLines += 5;
         // } else {
-        //     ShowLog("****> printing QR: Bitmap NOT OK");
+        //     LOG_INFO("****> printing QR: Bitmap NOT OK");
         // }
     }
     wxPdfColour origColor = GetFillColour();

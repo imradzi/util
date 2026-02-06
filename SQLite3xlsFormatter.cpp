@@ -434,7 +434,7 @@ libxl::Sheet *ReportGenerator::Generator::AppendToExcelSheet(ExcelReader *xlsRea
         std::wstring formula = sumFunction + L"(" + firstRow + L":" + lastRow + L")";
         if (!sheet->writeFormula(row, c, formula.c_str(), formatter.GetXLSFormat(c))) {
             std::string x = String::to_string(formula);
-            ShowLog(fmt::format("libxl.version={}/{}> Error {}: [{}]", xlr.book->version(), xlr.book->biffVersion(), xlr.book->errorMessage(), x));
+            LOG_INFO("libxl.version={}/{}> Error {}: [{}]", xlr.book->version(), xlr.book->biffVersion(), xlr.book->errorMessage(), x);
         }
     }
     return sheet;
@@ -442,7 +442,7 @@ libxl::Sheet *ReportGenerator::Generator::AppendToExcelSheet(ExcelReader *xlsRea
 #endif
 
 std::shared_ptr<ReportPDF> ReportGenerator::Generator::CreateNewPDF(std::shared_ptr<wpSQLResultSet> rs, const std::wstring &orientation, const std::wstring &sectionName, const std::wstring &title, const std::wstring &subTitle, wxJSONValue &param, const std::wstring outletName) {
-    ShowLog("CreateNewPDF");
+    LOG_INFO("CreateNewPDF");
     int pageOrientation = wxPORTRAIT;
     if (boost::iequals(orientation, "Landscape")) pageOrientation = wxLANDSCAPE;
     if (boost::iequals(orientation, "L")) pageOrientation = wxLANDSCAPE;
@@ -938,7 +938,7 @@ std::vector<std::vector<std::string>> ReportGenerator::Generator::GetVectorResul
 } // namespace ReportGenerator
 
 void ReportPDF::CreateNewSection(DB::SQLiteBase &db, std::shared_ptr<wpSQLResultSet> rs, const std::string &orientation, const std::string &sName, const std::string &ttl, const std::string &sTtl, wxJSONValue &param) {
-    ShowLog("CreateNewSection");
+    LOG_INFO("CreateNewSection");
     pageOrientation = wxPORTRAIT;
     if (boost::iequals(orientation, "Landscape")) pageOrientation = wxLANDSCAPE;
     if (boost::iequals(orientation, "L")) pageOrientation = wxLANDSCAPE;

@@ -1,3 +1,7 @@
+#include <string>
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_io.hpp>
+#include <boost/uuid/random_generator.hpp>
 
 // Base64URL encoding (URL-safe, no padding)
 static std::string base64url_encode(const unsigned char* data, size_t len) {

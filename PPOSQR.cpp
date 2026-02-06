@@ -22,6 +22,7 @@
 #include <memory>
 #include <vector>
 #include <zlib.h>
+#include <boost/locale.hpp>
 #include "PPOSQR.h"
 #include "encrypt64.h"
 
