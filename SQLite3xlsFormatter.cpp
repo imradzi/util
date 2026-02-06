@@ -434,7 +434,7 @@ libxl::Sheet *ReportGenerator::Generator::AppendToExcelSheet(ExcelReader *xlsRea
         std::wstring formula = sumFunction + L"(" + firstRow + L":" + lastRow + L")";
         if (!sheet->writeFormula(row, c, formula.c_str(), formatter.GetXLSFormat(c))) {
             std::string x = String::to_string(formula);
-            LOG_INFO("libxl.version={}/{}> Error {}: [{}]", xlr.book->version(), xlr.book->biffVersion(), xlr.book->errorMessage(), x);
+            LOG_ERROR("libxl.version={}/{}> Error {}: [{}]", xlr.book->version(), xlr.book->biffVersion(), xlr.book->errorMessage(), x);
         }
     }
     return sheet;
