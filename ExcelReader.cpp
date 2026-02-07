@@ -222,7 +222,7 @@ bool ExcelReader::ReadSheetData(std::vector<std::vector<std::wstring>> &data) {
     for (long row = sheet->firstRow(); row < sheet->lastRow(); row++) {
         auto &rowData = data.emplace_back();
         for (long col = sheet->firstCol(); col < sheet->lastCol(); col++) {
-#ifndef NDEBUG
+#ifdef _DEBUG
             std::wstring sdata = sheet->readStr(row, col);
 #endif
             switch (sheet->cellType(row, col)) {
