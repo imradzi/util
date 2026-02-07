@@ -231,8 +231,8 @@ void ReportPDF::Footer() {
         Cell(0, height, wxString::Format("Page %d", PageNo()), 0, 0, wxPDF_ALIGN_RIGHT);  // Page number
     }
     auto _y = GetY();
-    SetY(-15);  // 1cm from bottom;
-    SetFont("Arial", "", fontSize.data);
+    SetY(-5);  // 1cm from bottom;
+    SetFont("Arial", "", 6);
     Cell(0, 0, outletName, 0, 0, wxPDF_ALIGN_LEFT);
     SetY(_y);
     Ln(GetFontHeight());
@@ -407,7 +407,7 @@ std::tuple<double, int> ReportPDF::WriteLetterHead(const std::wstring &companyNa
             startAfterImage = lastY + 5;
             nLines += 10;
         } else {
-            createQRBitmap(x0, y0, companyName + L", " + companyName2 + L"\n" + address);
+            //bitmap = createQRBitmap(x0, y0, companyName + L", " + companyName2 + L"\n" + address);
             //if (bitmap.IsOk()) Image("logo", bitmap.ConvertToImage(), x0, y0);
             auto lastX = GetLastImageBottomRightX();
             auto lastY = GetLastImageBottomRightY();
@@ -445,12 +445,14 @@ std::tuple<double, int> ReportPDF::WriteLetterHead(const std::wstring &companyNa
     }
     SetDrawColour(boxColorRed, boxColorBlue, boxColorGreen);
 
-    SetFont("Arial", "", 10);
-
-    Cell(0, height, "", wxPDF_BORDER_NONE, 1, 0, letterheadFillRect ? 1 : 0);
+    //SetFont("Arial", "", 10);
+    //Cell(0, height, "", wxPDF_BORDER_NONE, 1, 0, letterheadFillRect ? 1 : 0);
 
     SetFont("Arial", "", 20);
-    Cell(5, height, "", wxPDF_BORDER_NONE, 0, 0, letterheadFillRect ? 1 : 0);  // a buffer
+    auto x = GetX();
+    SetX(x0/2);
+    Cell(0, height, "", wxPDF_BORDER_NONE, 0, 0, letterheadFillRect ? 1 : 0);  // a buffer
+    SetX(x);
     Cell(GetStringWidth(companyName) + GetCellMargin(), height, companyName, wxPDF_BORDER_NONE, 0, 0, letterheadFillRect ? 1 : 0);
     SetFont("Arial", "", 10);
     if (!regNo.empty())
@@ -458,7 +460,6 @@ std::tuple<double, int> ReportPDF::WriteLetterHead(const std::wstring &companyNa
     else
         Cell(0, height, " ", wxPDF_BORDER_NONE, 0, 0, letterheadFillRect ? 1 : 0);
 
-    // if (!gstRegNo.IsEmpty()) { SetFont("Arial", "", 10); Cell(thisW, height, " (GST: " + gstRegNo + ")", 0, 0, 0, 1); }
     Ln();
     if (!companyName2.empty()) {
         Cell(5, height, "", wxPDF_BORDER_NONE, 0, 0, letterheadFillRect ? 1 : 0);  // a buffer
@@ -493,10 +494,11 @@ void ReportPDF::WriteBox(double x, double y, const std::wstring &title, const st
     SetXY(x, y);
     SetLeftMargin(x);
     // Write(6, title);
+    SetFont("Arial", "", 12);
     double height = GetFontHeight() * 0.7;
     Cell(0, height, title, 0, 1, align);
     SetFont("Arial", "", 8);
-    height = GetFontHeight();
+    height = GetFontHeight() * 0.7;
     for (auto const &it : lines) {
         Cell(0, height, it, 0, 1, align);
     }
