@@ -462,6 +462,7 @@ std::tuple<double, int> ReportPDF::WriteLetterHead(const std::wstring &companyNa
 
     Ln();
     if (!companyName2.empty()) {
+        SetFont("Arial", "", 15);
         Cell(5, height, "", wxPDF_BORDER_NONE, 0, 0, letterheadFillRect ? 1 : 0);  // a buffer
         Cell(0, height, companyName2, wxPDF_BORDER_NONE, 1, 0, letterheadFillRect ? 1 : 0);
     }
