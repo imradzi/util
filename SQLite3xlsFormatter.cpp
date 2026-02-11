@@ -36,6 +36,7 @@
 #include "rDb.h"
 #include "ExcelReader.h"
 #include "PDFWriter.h"
+#include "html_report_builder.h"
 #include "xmlParser.h"
 #include "logger/logger.h"
 #include "SQLite3xlsFormatter.h"
@@ -288,7 +289,7 @@ libxl::Sheet *ReportGenerator::Generator::CreateNewSheet(ExcelReader *xlsReader,
 #endif
 
 #ifndef NO_XLS
-libxl::Sheet *ReportGenerator::Generator::AppendGroupingToExcelSheet(ExcelReader *xlsReader, libxl::Sheet *sheet, std::shared_ptr<ReportPDF> /*unused*/, std::shared_ptr<wpSQLResultSet> rs, wxJSONValue &param, bool freezeHeader) {
+libxl::Sheet *ReportGenerator::Generator::AppendGroupingToExcelSheet(ExcelReader *xlsReader, libxl::Sheet *sheet, std::shared_ptr<HtmlReportBuilder> /*unused*/, std::shared_ptr<wpSQLResultSet> rs, wxJSONValue &param, bool freezeHeader) {
     if (!xlsReader || !sheet) return NULL;
     ExcelReader &xlr(*xlsReader);
     int row = 0, col = 0;
@@ -382,7 +383,7 @@ libxl::Sheet *ReportGenerator::Generator::AppendGroupingToExcelSheet(ExcelReader
     return sheet;
 }
 
-libxl::Sheet *ReportGenerator::Generator::AppendToExcelSheet(ExcelReader *xlsReader, libxl::Sheet *sheet, std::shared_ptr<ReportPDF> /*unused*/, std::shared_ptr<wpSQLResultSet> rs, wxJSONValue &param, bool freezeHeader) {
+libxl::Sheet *ReportGenerator::Generator::AppendToExcelSheet(ExcelReader *xlsReader, libxl::Sheet *sheet, std::shared_ptr<HtmlReportBuilder> /*unused*/, std::shared_ptr<wpSQLResultSet> rs, wxJSONValue &param, bool freezeHeader) {
     if (!xlsReader || !sheet) return NULL;
     ExcelReader &xlr(*xlsReader);
     int row = 0, col = 0;
@@ -441,46 +442,35 @@ libxl::Sheet *ReportGenerator::Generator::AppendToExcelSheet(ExcelReader *xlsRea
 }
 #endif
 
-std::shared_ptr<ReportPDF> ReportGenerator::Generator::CreateNewPDF(std::shared_ptr<wpSQLResultSet> rs, const std::wstring &orientation, const std::wstring &sectionName, const std::wstring &title, const std::wstring &subTitle, wxJSONValue &param, const std::wstring outletName) {
-    LOG_INFO("CreateNewPDF");
-    int pageOrientation = wxPORTRAIT;
-    if (boost::iequals(orientation, "Landscape")) pageOrientation = wxLANDSCAPE;
-    if (boost::iequals(orientation, "L")) pageOrientation = wxLANDSCAPE;
-    auto pdf = std::make_shared<ReportPDF>(title, outletName, pageOrientation);
-    pdf->subTitle = String::to_wstring(subTitle);
-    pdf->sectionName = String::to_wstring(sectionName);
-    pdf->SetAuthor("PharmaPOS");
-    pdf->SetTitle(title);
-    pdf->SetFont("Arial", "B", 8);
-    pdf->SetAutoPageBreak(false);
-    if (rs == NULL) return pdf;
+std::shared_ptr<HtmlReportBuilder> ReportGenerator::Generator::CreateNewPDF(std::shared_ptr<wpSQLResultSet> rs, const std::wstring &orientation, const std::wstring &sectionName, const std::wstring &title, const std::wstring &subTitle, wxJSONValue &param, const std::wstring outletName) {
+    LOG_INFO("CreateNewPDF (HtmlReportBuilder)");
+    std::string orient = "Portrait";
+    if (boost::iequals(orientation, "Landscape") || boost::iequals(orientation, "L")) orient = "Landscape";
+    auto builder = std::make_shared<HtmlReportBuilder>(String::to_string(title), String::to_string(outletName), orient);
+    builder->setSubtitle(String::to_string(subTitle));
+    if (rs == nullptr) return builder;
 
     const int nCol = rs->GetColumnCount();
-    DB::XLSColumnFormatter *c = pdf->formatter = new DB::XLSColumnFormatter(NULL, NULL, rs, false, param);
-    if (!param.HasMember("column-sizes")) {
-        // while (rs->NextRow()) {
-        //	for (int i = 0; i < nCol; i++) {
-        //		std::string v = c->GetString(i, true);
-        //		if (v.length() > c->def()[i]->size) c->def()[i]->size = v.length();
-        //	}
-        // }
-        for (int i = 0; i < nCol; i++)
-            c->def()[i]->size = 1;
+    // Create XLSColumnFormatter for data formatting
+    auto *c = new DB::XLSColumnFormatter(NULL, NULL, rs, false, param);
+
+    // Transfer column definitions to builder
+    for (int i = 0; i < nCol; i++) {
+        auto &cdef = *c->def()[i];
+        builder->addColumn(
+            String::to_string(cdef.colName),
+            cdef.size > 0 ? cdef.size : 1.0,
+            cdef.type == DB::XLSColumnFormatter::Number,
+            String::to_string(cdef.sumFunction));
     }
 
-    pdf->breakPageOn = param.HasMember("break-page");
+    builder->setBreakPageOn(param.HasMember("break-page"));
 
-    double totLength = 0;
-    for (int i = (pdf->breakPageOn ? 1 : 0); i < nCol; i++) {
-        totLength += c->def()[i]->size;
-    }
+    // Store formatter pointer for later use in AppendToPDF
+    // (formatter is managed via the builder's user data — we store it and delete in AppendToPDF)
+    builder->setFormatterPtr(c);
 
-    double w = pdf->GetPageWidth() - pdf->GetRightMargin() - pdf->GetLeftMargin();
-    for (int i = (pdf->breakPageOn ? 1 : 0); i < nCol; i++) {
-        c->def()[i]->size = double(c->def()[i]->size) / totLength * w;
-    }
-    // pdf->AddPage(pageOrientation);
-    return pdf;
+    return builder;
 }
 
 static bool IsSameKey(std::vector<bool> &keyColumns, std::vector<std::string> &prevValues, std::vector<std::string> &currValues) {
@@ -494,25 +484,70 @@ static bool IsSameKey(std::vector<bool> &keyColumns, std::vector<std::string> &p
     return true;
 }
 
+// Helper: compute page total from formatter and set on builder's current section
+static void computeAndSetPageTotal(HtmlReportBuilder &builder, DB::XLSColumnFormatter *fmt, int nCol, int startOfs) {
+    bool hasSubtotal = false;
+    for (int i = 0; i < nCol; i++) {
+        if (!fmt->def()[i]->sumFunction.empty()) { hasSubtotal = true; break; }
+    }
+    if (!hasSubtotal) return;
+
+    std::vector<std::string> totalCells(nCol);
+    for (int i = startOfs; i < nCol; i++) {
+        auto &cdef = *fmt->def()[i];
+        if (cdef.subTotalLabel) {
+            totalCells[i] = "TOTAL THIS PAGE";
+        } else if (cdef.type == DB::XLSColumnFormatter::Number) {
+            if (boost::iequals(cdef.sumFunction, "sum"))
+                totalCells[i] = String::to_string(wxNumberFormatter::ToString(cdef.pageTotal, cdef.precision));
+            else if (boost::iequals(cdef.sumFunction, "average") || boost::iequals(cdef.sumFunction, "avg"))
+                totalCells[i] = String::to_string(wxNumberFormatter::ToString((cdef.nRecPage != 0 ? cdef.pageTotal / cdef.nRecPage : 0.0), cdef.precision));
+        }
+        // Reset page counters for next section
+        cdef.pageTotal = 0;
+        cdef.nRecPage = 0;
+    }
+    builder.setPageTotal(totalCells);
+}
+
+// Helper: compute grand total from formatter and set on builder
+static void computeAndSetGrandTotal(HtmlReportBuilder &builder, DB::XLSColumnFormatter *fmt, int nCol, int startOfs) {
+    bool hasSubtotal = false;
+    for (int i = 0; i < nCol; i++) {
+        if (!fmt->def()[i]->sumFunction.empty()) { hasSubtotal = true; break; }
+    }
+    if (!hasSubtotal) return;
+
+    std::vector<std::string> totalCells(nCol);
+    for (int i = startOfs; i < nCol; i++) {
+        auto &cdef = *fmt->def()[i];
+        if (cdef.subTotalLabel) {
+            totalCells[i] = "GRAND TOTAL";
+        } else if (cdef.type == DB::XLSColumnFormatter::Number) {
+            if (boost::iequals(cdef.sumFunction, "sum"))
+                totalCells[i] = String::to_string(wxNumberFormatter::ToString(cdef.grandTotal, cdef.precision));
+            else if (boost::iequals(cdef.sumFunction, "average") || boost::iequals(cdef.sumFunction, "avg"))
+                totalCells[i] = String::to_string(wxNumberFormatter::ToString((cdef.nRecTotal != 0 ? cdef.grandTotal / cdef.nRecTotal : 0), cdef.precision));
+        }
+    }
+    builder.setGrandTotal(totalCells);
+}
+
 // #ifdef NO_XLS
-libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Sheet *, std::shared_ptr<ReportPDF> report, std::shared_ptr<wpSQLResultSet> rs, wxJSONValue &param, bool /*freezeHeader*/) {
-// #else
-// libxl::Sheet *ReportGenerator::Generator::AppendToPDF(std::shared_ptr<ReportPDF> report, std::shared_ptr<wpSQLResultSet> rs, wxJSONValue &param, bool /*freezeHeader*/) {
+libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Sheet *, std::shared_ptr<HtmlReportBuilder> report, std::shared_ptr<wpSQLResultSet> rs, wxJSONValue &param, bool /*freezeHeader*/) {
 // #endif
 
     if (!report) throw std::runtime_error("AppendToPDF: report is NULL!!!");
 
-    ReportPDF &pdf(*report);
-    pdf.SetFont("Arial", "", 7);
-    DB::XLSColumnFormatter *fmt = pdf.formatter;
-    int lineheight = param.HasMember("lineheight") ? param["lineheight"].AsInt() : 5;
-    std::string fontName = param.HasMember("fontname") ? std::string(param["fontname"].AsString()) : "";
-    std::string fontType = param.HasMember("fonttype") ? std::string(param["fonttype"].AsString()) : "";
-    int fontSize = param.HasMember("fontsize") ? param["fontsize"].AsInt() : 7;
-    if (!fontName.empty())
-        pdf.SetFont(fontName, fontType, fontSize);
-    bool formulaExists = false;
+    HtmlReportBuilder &builder(*report);
+    DB::XLSColumnFormatter *fmt = builder.formatterPtr<DB::XLSColumnFormatter>();
+    if (!fmt) throw std::runtime_error("AppendToPDF: formatter is NULL!");
+
     const int nCol = rs->GetColumnCount();
+    int startOfs = (builder.breakPageOn() ? 1 : 0);
+
+    // Check for formula columns
+    bool formulaExists = false;
     for (int i = 0; i < nCol; i++) {
         DB::XLSColumnFormatter::ColumnDefinition &cdef = *fmt->def()[i];
         if (cdef.expression) {
@@ -521,24 +556,8 @@ libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Shee
         }
     }
 
-    std::vector<bool> keyColumns;
-    keyColumns.resize(nCol);
-    std::vector<std::string> prevValues;
-    prevValues.resize(nCol);
-    std::vector<std::string> currValues;
-    currValues.resize(nCol);
-    std::vector<std::vector<std::string>> buffer;
-    buffer.resize(nCol);
-
-    std::vector<bool> toCheckDup;
-    toCheckDup.resize(nCol);
-    if (param.HasMember("removedup")) {
-        for (unsigned int i = 0; i < param["removedup"].Size(); i++) {
-            int j = param["removedup"][i].AsInt();
-            if (j >= 0) toCheckDup[j] = true;
-        }
-    }
-    int startOfs = (pdf.breakPageOn ? 1 : 0);
+    // Key column deduplication setup
+    std::vector<bool> keyColumns(nCol, false);
     bool compareKey = false;
     bool showAllKeys = param.HasMember("show-all-keys") && (param["show-all-keys"].AsBool());
     if (param.HasMember("key-columns")) {
@@ -548,77 +567,36 @@ libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Shee
             compareKey = true;
         }
     }
-
+    std::vector<std::string> prevValues(nCol);
+    std::vector<std::string> currValues(nCol);
     bool isSameKey = false;
 
-    auto fnFlushBuffer = [&]() -> bool {
-        bool lineExist = false;
-        std::vector<std::string> prev(nCol);
-        for (; true;) {
-            bool hasBuffer = false;
-            std::vector<std::string> toPrint;
-            toPrint.resize(nCol);
-            for (int i = 0; i < nCol; i++) {
-                std::vector<std::string> &b = buffer[i];
-                std::vector<std::string>::iterator it = b.begin();
-                if (it != b.end()) {
-                    toPrint[i] = *it;
-                    // if (toPrint[i] == prev[i] && keyColumns[i]) toPrint[i] = "";
-                    prev[i] = *it;
-                    b.erase(it);
-                    hasBuffer |= true;
-                }
-            }
-            if (hasBuffer) {
-                lineExist = true;
-                for (int i = startOfs; i < nCol; i++) {
-                    std::string v = toPrint[i];
-                    int just = wxPDF_ALIGN_LEFT;
-                    DB::XLSColumnFormatter::ColumnDefinition &cdef = *fmt->def()[i];
-                    if (cdef.type == DB::XLSColumnFormatter::Number) {
-                        just = wxPDF_ALIGN_RIGHT;
-                    }
-                    pdf.ClippedCell(cdef.size, lineheight, v, wxPDF_BORDER_TOP | wxPDF_BORDER_BOTTOM | wxPDF_BORDER_LEFT | wxPDF_BORDER_RIGHT, 0, just);
-                }
-                pdf.Ln();
-            } else
-                break;
-        }
+    // Current section's page title for break-page
+    std::string currentPageTitle;
+    bool firstRow = true;
 
-        buffer.clear();
-        buffer.resize(nCol);
-        if (lineExist) {
-            pdf.Ln();
-            if (pdf.GetY() >= pdf.GetPageHeight() - 20) {
-                pdf.AddPage();
-            }
-        }
-        return lineExist;
-    };
-
-    auto fnRemoveLastWord = [](std::string &s) -> std::string {
-        auto idx = s.find_last_of(' ');
-        if (idx != std::string::npos) {
-            auto bal = s.substr(idx + 1);
-            s.resize(idx);
-            return bal;
-        }
-        std::string bal = s;
-        s.clear();
-        return bal;
-    };
+    // Start first section
+    builder.newSection();
 
     while (rs->NextRow()) {
-        if (pdf.breakPageOn) {
-            auto v = String::to_wstring(fmt->GetString(0));
-            if (!boost::equals(v, pdf.pageTitle)) {
-                fnFlushBuffer();
-                pdf.pageTitle = v;
-                pdf.AddPage(pdf.pageOrientation);
+        // Handle break-page: new section when column 0 value changes
+        if (builder.breakPageOn()) {
+            auto v = String::to_string(fmt->GetString(0, true));
+            if (v != currentPageTitle) {
+                if (!firstRow) {
+                    // Compute page totals for the ending section
+                    computeAndSetPageTotal(builder, fmt, nCol, startOfs);
+                    builder.newSection(v);
+                } else {
+                    // Set title on first section
+                    if (builder.currentSection())
+                        builder.currentSection()->pageTitle = v;
+                }
+                currentPageTitle = v;
             }
         }
-        if (!pdf.firstPagePrinted) pdf.AddPage(pdf.pageOrientation);
 
+        // Formula evaluation
         if (formulaExists) {
             for (int i = 0; i < nCol; i++) {
                 DB::XLSColumnFormatter::ColumnDefinition &cdef = *fmt->def()[i];
@@ -626,62 +604,26 @@ libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Shee
                     fmt->data[i] = fmt->GetDouble(i);
             }
         }
+
+        // Key comparison for grouping
         if (compareKey) {
             for (int i = 0; i < nCol; i++) {
-                std::string v = String::to_string(fmt->GetString(i, true));
-                currValues[i] = v;
+                currValues[i] = String::to_string(fmt->GetString(i, true));
             }
             isSameKey = IsSameKey(keyColumns, prevValues, currValues);
+            if (!isSameKey) {
+                prevValues = currValues;
+            }
         }
-        if (compareKey && !isSameKey) {
-            fnFlushBuffer();
-            prevValues.clear();
-            prevValues.resize(nCol);
-        }
-        for (int i = startOfs; i < nCol; i++) {
+
+        // Build row cells
+        std::vector<std::string> rowCells(nCol);
+        for (int i = 0; i < nCol; i++) {
             auto &cdef = *fmt->def()[i];
             std::string v = String::to_string(fmt->GetString(i, true));
-            bool valueChanges = true;
-            if (compareKey) {
-                if (keyColumns[i]) {
-                    currValues[i] = v;
-                    valueChanges = (v != prevValues[i]);
-                    if (valueChanges) prevValues[i] = v;
-                }
-                if (!valueChanges) continue;
-                if (boost::contains(v, "\n")) {
-                    wxStringTokenizer tk(v, "\n");
-                    while (tk.HasMoreTokens()) {
-                        std::string s(tk.GetNextToken());
-                        boost::trim(s);
-                        auto w = pdf.GetStringWidth(s);
-                        if (w > cdef.size) {
-                            std::string leftover;
-                            while (true) {
-                                while (pdf.GetStringWidth(s) > cdef.size) {
-                                    auto le = fnRemoveLastWord(s);
-                                    if (s.empty()) {
-                                        s = le;
-                                        break;
-                                    }
-                                    leftover.insert(0, " ");
-                                    leftover.insert(0, le);
-                                }
-                                if (!s.empty()) buffer[i].emplace_back(s);
-                                if (leftover.empty()) break;
-                                s = boost::trim_copy(leftover);
-                                leftover.clear();
-                            }
-                        } else
-                            buffer[i].emplace_back(s);
-                    }
-                } else
-                    buffer[i].emplace_back(v);
-                continue;
-            }
-            int just = wxPDF_ALIGN_LEFT;
+
+            // Track page and grand totals for numeric columns
             if (cdef.type == DB::XLSColumnFormatter::Number) {
-                just = wxPDF_ALIGN_RIGHT;
                 double t = fmt->GetDouble(i);
                 cdef.pageTotal += t;
                 cdef.grandTotal += t;
@@ -689,68 +631,32 @@ libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Shee
                 cdef.nRecTotal++;
             }
 
-            if (boost::contains(v, "\n") && valueChanges) {
-                buffer[i] = std::vector<std::string>();  // empty string list;
-                wxStringTokenizer tk(v, "\n");
-                if (tk.HasMoreTokens()) {
-                    for (int idx = 0; tk.HasMoreTokens(); idx++) {
-                        std::string s(tk.GetNextToken());
-                        if (idx == 0)
-                            pdf.ClippedCell(cdef.size, lineheight, s, wxPDF_BORDER_TOP | wxPDF_BORDER_BOTTOM | wxPDF_BORDER_LEFT | wxPDF_BORDER_RIGHT, 0, just);
-                        else
-                            buffer[i].emplace_back(s);
-                    }
-                } else {
-                    pdf.ClippedCell(cdef.size, lineheight, "", wxPDF_BORDER_TOP | wxPDF_BORDER_BOTTOM | wxPDF_BORDER_LEFT | wxPDF_BORDER_RIGHT, 0, just);
-                }
-            } else {
-                if (!valueChanges && !isSameKey && keyColumns[i] && showAllKeys) {
-                    pdf.ClippedCell(cdef.size, lineheight, v, wxPDF_BORDER_TOP | wxPDF_BORDER_BOTTOM | wxPDF_BORDER_LEFT | wxPDF_BORDER_RIGHT, 0, just);
-                } else {
-                    pdf.ClippedCell(cdef.size, lineheight, valueChanges ? v : std::string(), wxPDF_BORDER_TOP | wxPDF_BORDER_BOTTOM | wxPDF_BORDER_LEFT | wxPDF_BORDER_RIGHT, 0, just);
+            // Handle key deduplication: suppress display if same key
+            if (compareKey && keyColumns[i]) {
+                bool valueChanges = (v != prevValues[i]);
+                if (!valueChanges && !showAllKeys) {
+                    rowCells[i] = "";
+                    continue;
                 }
             }
-        }
-        if (!compareKey) {
-            pdf.Ln();
-            if (pdf.GetY() >= pdf.GetPageHeight() - 20) {
-                pdf.AddPage();
+
+            // Replace newlines with <br> for HTML rendering
+            if (boost::contains(v, "\n")) {
+                boost::replace_all(v, "\n", "<br>");
             }
+            rowCells[i] = v;
         }
-    }
-    for (; true;) {
-        bool hasBuffer = false;
-        std::vector<std::string> toPrint;
-        toPrint.resize(nCol);
-        for (int i = 0; i < nCol; i++) {
-            std::vector<std::string> &b = buffer[i];
-            std::vector<std::string>::iterator it = b.begin();
-            if (it != b.end()) {
-                toPrint[i] = *it;
-                b.erase(it);
-                hasBuffer |= true;
-            }
-        }
-        if (hasBuffer) {
-            for (int i = startOfs; i < nCol; i++) {
-                std::string v = toPrint[i];
-                int just = wxPDF_ALIGN_LEFT;
-                DB::XLSColumnFormatter::ColumnDefinition &cdef = *fmt->def()[i];
-                if (cdef.type == DB::XLSColumnFormatter::Number) {
-                    just = wxPDF_ALIGN_RIGHT;
-                }
-                pdf.ClippedCell(cdef.size, lineheight, v, wxPDF_BORDER_TOP | wxPDF_BORDER_BOTTOM | wxPDF_BORDER_LEFT | wxPDF_BORDER_RIGHT, 0, just);
-            }
-            pdf.Ln();
-        } else
-            break;
+
+        builder.addRow(rowCells);
+        firstRow = false;
     }
 
-    // double lm = pdf.GetLeftMargin();
-    pdf.Footer();
-    pdf.showFooter = false;
-    pdf.Ln();
-    pdf.ShowGrandTotal();
+    // Compute page total for the last section
+    computeAndSetPageTotal(builder, fmt, nCol, startOfs);
+
+    // Compute and set grand total
+    computeAndSetGrandTotal(builder, fmt, nCol, startOfs);
+
     return nullptr;
 }
 
@@ -937,46 +843,35 @@ std::vector<std::vector<std::string>> ReportGenerator::Generator::GetVectorResul
 
 } // namespace ReportGenerator
 
-void ReportPDF::CreateNewSection(DB::SQLiteBase &db, std::shared_ptr<wpSQLResultSet> rs, const std::string &orientation, const std::string &sName, const std::string &ttl, const std::string &sTtl, wxJSONValue &param) {
-    LOG_INFO("CreateNewSection");
-    pageOrientation = wxPORTRAIT;
-    if (boost::iequals(orientation, "Landscape")) pageOrientation = wxLANDSCAPE;
-    if (boost::iequals(orientation, "L")) pageOrientation = wxLANDSCAPE;
+// CreateNewSection for HtmlReportBuilder — called from PdfOutputWriter for multi-section reports
+void HtmlReportBuilder_CreateNewSection(HtmlReportBuilder &builder, DB::SQLiteBase &/*db*/, std::shared_ptr<wpSQLResultSet> rs, const std::string &orientation, const std::string &sName, const std::string &ttl, const std::string &sTtl, wxJSONValue &param) {
+    LOG_INFO("HtmlReportBuilder_CreateNewSection");
+    if (boost::iequals(orientation, "Landscape") || boost::iequals(orientation, "L"))
+        builder.setOrientation("Landscape");
+    else
+        builder.setOrientation("Portrait");
 
-    if (!sTtl.empty()) subTitle = String::to_wstring(sTtl);
-    if (!sName.empty()) sectionName = String::to_wstring(sName);
-    if (!ttl.empty()) SetTitle(ttl);
+    if (!sTtl.empty()) builder.setSubtitle(sTtl);
 
     const int nCol = rs->GetColumnCount();
 
-    SetFont("Arial", "B", 8);
-    SetAutoPageBreak(false);
-    if (formatter) delete formatter;
-    DB::XLSColumnFormatter *c = formatter = new DB::XLSColumnFormatter(NULL, NULL, rs, false, param);
-    if (!param.HasMember("column-sizes")) {
-        while (rs->NextRow()) {
-            for (int i = 0; i < nCol; i++) {
-                auto v = c->GetString(i, true);
-                if (v.length() > c->def()[i]->size) c->def()[i]->size = v.length();
-            }
-        }
-        for (int i = 0; i < nCol; i++) {
-            if (boost::iequals(c->def()[i]->sumFunction, "sum"))
-                c->def()[i]->size += 3;  // add 2 digit for total
-        }
+    // Replace formatter
+    auto *c = new DB::XLSColumnFormatter(NULL, NULL, rs, false, param);
+
+    // Clear and rebuild column definitions
+    builder.clearColumns();
+    for (int i = 0; i < nCol; i++) {
+        auto &cdef = *c->def()[i];
+        builder.addColumn(
+            String::to_string(cdef.colName),
+            cdef.size > 0 ? cdef.size : 1.0,
+            cdef.type == DB::XLSColumnFormatter::Number,
+            String::to_string(cdef.sumFunction));
     }
 
-    breakPageOn = param.HasMember("break-page");
+    builder.setBreakPageOn(param.HasMember("break-page"));
+    builder.setFormatterPtr(c);
 
-    double totLength = 0;
-    for (int i = (breakPageOn ? 1 : 0); i < nCol; i++) {
-        totLength += c->def()[i]->size;
-    }
-
-    double w = GetPageWidth() - GetRightMargin() - GetLeftMargin();
-    for (int i = (breakPageOn ? 1 : 0); i < nCol; i++) {
-        c->def()[i]->size = double(c->def()[i]->size) / totLength * w;
-    }
-    AddPage(pageOrientation);
-    showFooter = true;
+    // Start a new section
+    builder.newSection(sName);
 }

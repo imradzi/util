@@ -1,6 +1,7 @@
 #include "ReportOutputWriter.h"
 #include "ExcelReader.h"
 #include "PDFWriter.h"
+#include "html_report_builder.h"
 #include "wpObject.h"
 #include <boost/algorithm/string.hpp>
 #include <fmt/format.h>
@@ -91,8 +92,8 @@ void PdfOutputWriter::CreateNewSection(DB::SQLiteBase& db,
             param,
             String::to_wstring(outletName));
     } else {
-        // Subsequent sections: append to existing PDF.
-        pdfReport_->CreateNewSection(db, rs, orientation,
+        // Subsequent sections: append to existing builder.
+        HtmlReportBuilder_CreateNewSection(*pdfReport_, db, rs, orientation,
             fmt::format("Section {}", sheetNo), name, sel, param);
     }
 }
@@ -128,7 +129,7 @@ std::wstring PdfOutputWriter::Save(const std::wstring& baseName,
                                    const std::string& outletName) {
     auto fileName = baseName + L".pdf";
     if (!pdfReport_) {
-        // No data at all — create a stub PDF so we still return a valid file.
+        // No data at all — create a stub builder so we still return a valid file.
         std::shared_ptr<wpSQLResultSet> rs;
         pdfReport_ = ReportGenerator::Generator::CreateNewPDF(
             rs, String::to_wstring(orientation),
@@ -139,12 +140,8 @@ std::wstring PdfOutputWriter::Save(const std::wstring& baseName,
             String::to_wstring(outletName));
     }
     if (!dataExists) {
-        pdfReport_->AddPage();
-        pdfReport_->Ln(20);
-        pdfReport_->Cell(pdfReport_->GetPageWidth(), 0, "No Data for: ", 0, 1, wxPDF_ALIGN_CENTER);
-        pdfReport_->Ln(10);
-        pdfReport_->Cell(pdfReport_->GetPageWidth(), 0, noDataText, 0, 1, wxPDF_ALIGN_CENTER);
+        pdfReport_->setNoData(noDataText);
     }
-    pdfReport_->SaveAsFile(fileName);
+    pdfReport_->saveAsFile(fileName);
     return fileName;
 }

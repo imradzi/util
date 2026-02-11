@@ -6,6 +6,7 @@
 #include "SQLite3xlsFormatter.h"
 
 namespace DB { class SQLiteBase; }
+class HtmlReportBuilder;
 
 // Abstract interface for report output (PDF or Excel).
 // Eliminates scattered isExcel/isPDF branching in ExecuteCommand.
@@ -92,7 +93,7 @@ public:
 // ─── PDF Writer ─────────────────────────────────────────────────────────────
 
 class PdfOutputWriter : public ReportOutputWriter {
-    std::shared_ptr<ReportPDF> pdfReport_;
+    std::shared_ptr<HtmlReportBuilder> pdfReport_;
     ReportGenerator::Generator::Function genFn_;
 
 public:
