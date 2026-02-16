@@ -28,31 +28,31 @@ void HeartBeat::Beat(bool stopPause) {
     {
         std::lock_guard lock(mtx);
         beatCounter.fetch_add(1, std::memory_order_release);
-        if (stopPause) isPaused = false;
+        if (stopPause) isPaused.store(false);
     }
     cv.notify_all();
 }
 
 void HeartBeat::Wait() {
     std::unique_lock lock(mtx);
-    uint64_t currentBeat = beatCounter.load(std::memory_order_acquire);
+    uint64_t currentBeat = beatCounter.load();
     cv.wait(lock, [&] {
-        return isShutdown.load(std::memory_order_acquire) || 
-               (!isPaused.load(std::memory_order_acquire) && beatCounter.load(std::memory_order_acquire) > currentBeat);
+        return isShutdown.load() || 
+               (!isPaused.load() && beatCounter.load() > currentBeat);
     });
 }
 
 void HeartBeat::Pause() {
     {
         std::lock_guard lock(mtx);
-        isPaused = true;
+        isPaused.store(true);
     }
     cv.notify_all();
 }
 
 void HeartBeat::Stop() {
     timer.cancel();
-    isShutdown.store(true, std::memory_order_release);
+    isShutdown.store(true);
     Beat(); // last beat to wake all waiting threads
     io.stop();
     thread.join();
