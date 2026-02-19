@@ -504,6 +504,29 @@ libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Shee
 
     ReportPDF &pdf(*report);
     pdf.SetFont("Arial", "", 7);
+    
+    // Recreate formatter if column count changed or formatter doesn't exist
+    const int nCol = rs->GetColumnCount();
+    if (!pdf.formatter || int(pdf.formatter->def().size()) != nCol) {
+        if (pdf.formatter) {
+            delete pdf.formatter;
+            pdf.formatter = nullptr;
+        }
+        DB::XLSColumnFormatter *c = pdf.formatter = new DB::XLSColumnFormatter(nullptr, nullptr, rs, false, param);
+        if (!param.HasMember("column-sizes")) {
+            for (int i = 0; i < nCol; i++)
+                c->def()[i]->size = 1;
+        }
+        pdf.breakPageOn = param.HasMember("break-page");
+        double totLength = 0;
+        for (int i = (pdf.breakPageOn ? 1 : 0); i < nCol; i++) {
+            totLength += c->def()[i]->size;
+        }
+        double w = pdf.GetPageWidth() - pdf.GetRightMargin() - pdf.GetLeftMargin();
+        for (int i = (pdf.breakPageOn ? 1 : 0); i < nCol; i++) {
+            c->def()[i]->size = double(c->def()[i]->size) / totLength * w;
+        }
+    }
     DB::XLSColumnFormatter *fmt = pdf.formatter;
     int lineheight = param.HasMember("lineheight") ? param["lineheight"].AsInt() : 5;
     std::string fontName = param.HasMember("fontname") ? std::string(param["fontname"].AsString()) : "";
@@ -512,7 +535,6 @@ libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Shee
     if (!fontName.empty())
         pdf.SetFont(fontName, fontType, fontSize);
     bool formulaExists = false;
-    const int nCol = rs->GetColumnCount();
     for (int i = 0; i < nCol; i++) {
         DB::XLSColumnFormatter::ColumnDefinition &cdef = *fmt->def()[i];
         if (cdef.expression) {
