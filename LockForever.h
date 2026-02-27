@@ -6,8 +6,8 @@
 using namespace std::chrono_literals;
 
 //LockForever: while the check.first == check.second try to lock, else return fail.
-template<typename T>
-std::tuple<bool, std::unique_lock<T>> LockForever(T& lock, std::pair<ObservableAtomic *, bool> check, const std::chrono::milliseconds timeOut = 500ms) {
+template<typename T, typename Rep = long long, typename Period = std::milli>
+std::tuple<bool, std::unique_lock<T>> LockForever(T& lock, std::pair<ObservableAtomic *, bool> check, const std::chrono::duration<Rep, Period> timeOut = 500ms) {
     // Create a sleeper that monitors the flag
     WakeableSleeper sleeper{{{check.first, !check.second}}};
 
