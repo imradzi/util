@@ -5,13 +5,20 @@
 
 using namespace std::chrono_literals;
 
-//LockForever: while the check.first == check.second try to lock, else return fail.
+//LockForever: try lock while all the conditions in the checkList are true, 
+//   if any of the condition is false, return immediately with false.
 template<typename T, typename Rep = long long, typename Period = std::milli>
-std::tuple<bool, std::unique_lock<T>> LockForever(T& lock, std::pair<ObservableAtomic *, bool> check, const std::chrono::duration<Rep, Period> timeOut = 500ms) {
+std::tuple<bool, std::unique_lock<T>> LockForever(T& lock, std::vector<std::pair<ObservableAtomic*, bool>> checkList, const std::chrono::duration<Rep, Period> timeOut = 500ms) {
     // Create a sleeper that monitors the flag
-    WakeableSleeper sleeper{{{check.first, !check.second}}};
+    WakeableSleeper sleeper{checkList};
 
-    while (check.first->load() == check.second) {
+    auto eval = [&checkList]() {
+        return std::all_of(checkList.begin(), checkList.end(), [](const auto& check) {
+            return check.first->load() == check.second;
+        });
+    };
+
+    while (eval()) {
         if (lock.try_lock_for(timeOut)) {
             return {true, std::unique_lock<T>(lock, std::adopt_lock)};
         }
