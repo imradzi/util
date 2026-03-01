@@ -33,7 +33,7 @@ public:
 
 // Improved WakeableSleeper
 // sleep for duration or until any of the flags in the list is set to the specified value, whichever comes first. 
-//      Returns true if woke up by flag change, false if timeout.
+//      Returns true if timeout, false if woke up by flag change.
 class WakeableSleeper {
     std::mutex cv_mtx;
     std::condition_variable cv;
