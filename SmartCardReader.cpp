@@ -81,7 +81,7 @@ wxString SmartCardReader::GetPostCode(unsigned char *in) {
     return res;
 }
 
-SmartCardReader::SmartCardReader() : skipPhoto(true) {
+SmartCardReader::SmartCardReader() : skipPhoto(true), hCard(0) {
     long retVal = SCardEstablishContext(SCARD_SCOPE_USER, 0, 0, &hSC);
     if (retVal != SCARD_S_SUCCESS) throw std::runtime_error(fmt::format("SmartCardError: {}", std::string(GetErrorMessage(retVal))));
 #ifdef __LINUX__
@@ -101,7 +101,7 @@ SmartCardReader::SmartCardReader() : skipPhoto(true) {
     for (size_t i = 0; i < dCount; i++) {
         if (!*p) break;
         auto &reader = readerNames.emplace_back(p);
-        p += reader.Length();
+        p += reader.Length() + 1;  // +1 to skip the null separator in the multi-string
     }
 }
 SmartCardReader::~SmartCardReader() {
@@ -110,7 +110,7 @@ SmartCardReader::~SmartCardReader() {
 
 bool SmartCardReader::Connect(int readerIndex) {
     unsigned long dProtocol;
-    if (readerIndex < 0 && readerIndex >= int(readerNames.size())) return false;
+    if (readerIndex < 0 || readerIndex >= int(readerNames.size())) return false;
     long retVal = SCardConnect(hSC, readerNames[readerIndex].c_str(), SCARD_SHARE_SHARED, SCARD_PROTOCOL_T0, &hCard, &dProtocol);
     if (retVal != 0) throw std::runtime_error(fmt::format("SmartCardError: {}", std::string(GetErrorMessage(retVal))));
     return true;
@@ -204,7 +204,7 @@ bool SmartCardReader::GetData() {
 }
 
 bool SmartCardReader::GetStatus(int readerIdx, double timeOut) {
-    if (readerIdx < 0 && readerIdx >= int(readerNames.size())) return false;
+    if (readerIdx < 0 || readerIdx >= int(readerNames.size())) return false;
 
     SCARD_READERSTATE readerState;
     memset(&readerState, 0, sizeof(SCARD_READERSTATE));
@@ -212,7 +212,7 @@ bool SmartCardReader::GetStatus(int readerIdx, double timeOut) {
 #ifdef __LINUX__
     readerState.szReader = readerNames[readerIdx].c_str();
 #else
-    readerState.szReader = readerNames[readerIdx].wc_str();
+    readerState.szReader = readerNames[readerIdx].c_str();  // c_str() is safe; wc_str() returns a temporary wxWCharBuffer (dangling pointer)
 #endif
     unsigned long ret = SCardGetStatusChange(hSC, timeOut, &readerState, 1);
     if (ret != SCARD_S_SUCCESS) return false;
