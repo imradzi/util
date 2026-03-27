@@ -1,18 +1,18 @@
 #include "WakeableSleeper.h"
 #include "logging.hpp"
 
-void FlagNotifier::subscribe(std::condition_variable* cv) {
+void FlagNotifier::subscribe(std::condition_variable* cv) const {
     std::lock_guard<std::mutex> lock(mtx);
     subscribers.push_back(cv);
 }
 
-void FlagNotifier::unsubscribe(std::condition_variable* cv) {
+void FlagNotifier::unsubscribe(std::condition_variable* cv) const {
     std::lock_guard<std::mutex> lock(mtx);
     subscribers.erase(std::remove(subscribers.begin(), subscribers.end(), cv),
         subscribers.end());
 }
 
-void FlagNotifier::notify_change() {
+void FlagNotifier::notify_change() const {
     std::lock_guard<std::mutex> lock(mtx);
     for (auto* cv : subscribers) {
         cv->notify_all();
@@ -30,8 +30,8 @@ bool ObservableAtomic::load() const {
     return value.load(std::memory_order_acquire);
 }
 
-WakeableSleeper::WakeableSleeper(std::vector<std::pair<ObservableAtomic *, bool>> f) {
-    for (auto &x : f) {
+WakeableSleeper::WakeableSleeper(std::vector<std::pair<const ObservableAtomic*, bool>> f) {
+    for (auto& x : f) {
         flags.emplace_back(x.first->get_atomic(), x.second);
         auto notify = notifiers.emplace_back(x.first->get_notifier());
         notify->subscribe(&cv);
@@ -40,7 +40,7 @@ WakeableSleeper::WakeableSleeper(std::vector<std::pair<ObservableAtomic *, bool>
 
 WakeableSleeper::~WakeableSleeper() {
     // Unsubscribe from all notifiers
-    for (auto *notifier : notifiers) {
+    for (auto* notifier : notifiers) {
         notifier->unsubscribe(&cv);
     }
 }
