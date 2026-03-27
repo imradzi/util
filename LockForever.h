@@ -8,7 +8,7 @@ using namespace std::chrono_literals;
 //LockForever: try lock while all the conditions in the checkList are true, 
 //   if any of the condition is false, return immediately with false.
 template<typename T, typename Rep = long long, typename Period = std::milli>
-std::tuple<bool, std::unique_lock<T>> LockForever(T& lock, std::vector<std::pair<ObservableAtomic*, bool>> checkList, const std::chrono::duration<Rep, Period> timeOut = 500ms) {
+std::tuple<bool, std::unique_lock<T>> LockForever(T& lock, std::vector<std::pair<const ObservableAtomic*, bool>> checkList, const std::chrono::duration<Rep, Period> timeOut = 500ms) {
     // Create a sleeper that monitors the flag
     WakeableSleeper sleeper{checkList};
 

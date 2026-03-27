@@ -9,13 +9,13 @@
 #include <chrono>
 
 class FlagNotifier {
-    std::mutex mtx;
-    std::vector<std::condition_variable*> subscribers;
+    mutable std::mutex mtx;
+    mutable std::vector<std::condition_variable*> subscribers;
 
 public:
-    void subscribe(std::condition_variable* cv);
-    void unsubscribe(std::condition_variable* cv);
-    void notify_change();
+    void subscribe(std::condition_variable* cv) const;
+    void unsubscribe(std::condition_variable* cv) const;
+    void notify_change() const;
 };
 
 class ObservableAtomic {
@@ -28,7 +28,9 @@ public:
     void store(bool v);
     bool load() const;
     FlagNotifier* get_notifier() { return &notifier; }
+    const FlagNotifier* get_notifier() const { return &notifier; }
     std::atomic<bool>* get_atomic() { return &value; }
+    const std::atomic<bool>* get_atomic() const { return &value; }
 };
 
 // Improved WakeableSleeper
@@ -37,11 +39,11 @@ public:
 class WakeableSleeper {
     std::mutex cv_mtx;
     std::condition_variable cv;
-    std::vector<std::pair<std::atomic<bool>*, bool>> flags;
-    std::vector<FlagNotifier*> notifiers;
+    std::vector<std::pair<const std::atomic<bool>*, bool>> flags;
+    std::vector<const FlagNotifier*> notifiers;
 
 public:
-    WakeableSleeper(std::vector<std::pair<ObservableAtomic*, bool>> f);
+    WakeableSleeper(std::vector<std::pair<const ObservableAtomic*, bool>> f);
     ~WakeableSleeper();
 
     // sleep_for -> true if timeout, false if woken up by flag change
