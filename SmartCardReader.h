@@ -29,7 +29,7 @@ public:
     MyKadData data;
     wxImage face;
     bool skipPhoto;
-    static wxString GetErrorMessage(unsigned long errorCode);
+    static wxString GetErrorMessage(LONG errorCode);
 
 public:
     SmartCardReader();
