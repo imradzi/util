@@ -91,7 +91,11 @@ SmartCardReader::SmartCardReader() : skipPhoto(true), hCard(0) {
     wchar_t rxBuffer[1024];
     unsigned long dCount = sizeof(rxBuffer) / sizeof(wchar_t);
 #endif
+#ifdef __LINUX__
+    retVal = SCardListReaders(hSC, 0, rxBuffer, &dCount);
+#else
     retVal = SCardListReadersW(hSC, 0, rxBuffer, &dCount);
+#endif
     if (retVal != 0) throw std::runtime_error(fmt::format("SmartCardError: {}", std::string(GetErrorMessage(retVal))));
 #ifdef __LINUX__
     char *p = rxBuffer;
