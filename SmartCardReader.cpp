@@ -36,7 +36,7 @@
 #include "SmartCardReader.h"
 
 
-#ifdef _WIN32
+#ifdef _MSC_VER
 #pragma comment(lib, "winscard.lib")
 #endif
 
@@ -91,7 +91,11 @@ SmartCardReader::SmartCardReader() : skipPhoto(true), hCard(0) {
     wchar_t rxBuffer[1024];
     unsigned long dCount = sizeof(rxBuffer) / sizeof(wchar_t);
 #endif
+#ifdef __LINUX__
     retVal = SCardListReaders(hSC, 0, rxBuffer, &dCount);
+#else
+    retVal = SCardListReadersW(hSC, 0, rxBuffer, &dCount);
+#endif
     if (retVal != 0) throw std::runtime_error(fmt::format("SmartCardError: {}", std::string(GetErrorMessage(retVal))));
 #ifdef __LINUX__
     char *p = rxBuffer;
@@ -231,7 +235,7 @@ const unsigned char SmartCardReader::CmdGetData[] = {0xCC, 0x06, 0x00, 0x00};   
 const int SmartCardReader::fileLengths[] = {0, 459, 4011, 1227, 171, 43, 43, 0};
 SCARD_IO_REQUEST SmartCardReader::pciT0 = {1, 8};
 
-wxString SmartCardReader::GetErrorMessage(unsigned long errCode) {
+wxString SmartCardReader::GetErrorMessage(LONG errCode) {
     switch (errCode) {
         case SCARD_F_INTERNAL_ERROR: return (" An internal consistency check failed.");
         case SCARD_E_CANCELLED: return ("The action was cancelled by an SCardCancel request.");
