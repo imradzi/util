@@ -59,7 +59,7 @@ namespace DB {
         ExcelReader *xlr;
         libxl::Sheet *sheet;
 #endif
-        static wxJSONValue emptyJSON;
+        static nlohmann::json emptyJSON;
         std::vector<ColumnDefinition *> defArray;
 
     public:
@@ -96,9 +96,9 @@ namespace DB {
 
     public:
 #ifndef NO_XLS
-        XLSColumnFormatter(ExcelReader *xlReader, libxl::Sheet *xlsSheet, std::shared_ptr<wpSQLResultSet> resultSet, bool freezeHeader = false, wxJSONValue &param = emptyJSON);
+        XLSColumnFormatter(ExcelReader *xlReader, libxl::Sheet *xlsSheet, std::shared_ptr<wpSQLResultSet> resultSet, bool freezeHeader = false, nlohmann::json &param = emptyJSON);
 #else
-        XLSColumnFormatter(void *, void *, std::shared_ptr<wpSQLResultSet> resultSet, bool freezeHeader = false, wxJSONValue &param = emptyJSON);
+        XLSColumnFormatter(void *, void *, std::shared_ptr<wpSQLResultSet> resultSet, bool freezeHeader = false, nlohmann::json &param = emptyJSON);
 #endif
         virtual ~XLSColumnFormatter();
     };
@@ -162,7 +162,7 @@ public:
 public:
     ReportPDF(const std::wstring &title, const std::wstring outletName, int orientation = wxPORTRAIT);
     virtual ~ReportPDF();
-    virtual void CreateNewSection(DB::SQLiteBase &db, std::shared_ptr<wpSQLResultSet> rs, const std::string &orientation, const std::string &section, const std::string &title, const std::string &subTitlesel, wxJSONValue &param);
+    virtual void CreateNewSection(DB::SQLiteBase &db, std::shared_ptr<wpSQLResultSet> rs, const std::string &orientation, const std::string &section, const std::string &title, const std::string &subTitlesel, nlohmann::json &param);
 
     double GetFontHeight() const;
     void ComputeColumnWeightage(std::vector<PDFColumnDefinition> *p, int tabStart);

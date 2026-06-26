@@ -20,14 +20,14 @@ void ExcelOutputWriter::CreateNewSection(DB::SQLiteBase& /*db*/,
                                          int sheetNo,
                                          const std::string& name,
                                          const std::string& sel,
-                                         wxJSONValue& /*param*/,
+                                         nlohmann::json& /*param*/,
                                          const std::string& /*outletName*/) {
     sheet_ = ReportGenerator::Generator::CreateNewSheet(
         &xlr_, rs->GetColumnCount(), fmt::format("Sheet {}", sheetNo), name, sel);
 }
 
 void ExcelOutputWriter::AppendData(std::shared_ptr<wpSQLResultSet> rs,
-                                   wxJSONValue& param,
+                                   nlohmann::json& param,
                                    bool freezeHeader) {
     (*genFn_)(&xlr_, sheet_, nullptr, rs, param, freezeHeader);
 }
@@ -36,7 +36,7 @@ void ExcelOutputWriter::ResetGenerator() {
     genFn_ = (ReportGenerator::Generator::Function)&ReportGenerator::Generator::AppendToExcelSheet;
 }
 
-void ExcelOutputWriter::SetGenerator(const std::string& directive, wxJSONValue& param) {
+void ExcelOutputWriter::SetGenerator(const std::string& directive, nlohmann::json& param) {
     genFn_ = ReportGenerator::Generator::GetProcessor(directive, param);
 }
 
@@ -53,7 +53,7 @@ std::wstring ExcelOutputWriter::Save(const std::wstring& baseName,
                                      const std::string& noDataText,
                                      const std::string& /*orientation*/,
                                      const std::string& /*name*/,
-                                     wxJSONValue& /*param*/,
+                                     nlohmann::json& /*param*/,
                                      const std::string& /*outletName*/) {
     auto fileName = baseName + L".xls";
     if (!dataExists) {
@@ -78,7 +78,7 @@ void PdfOutputWriter::CreateNewSection(DB::SQLiteBase& db,
                                        int sheetNo,
                                        const std::string& name,
                                        const std::string& sel,
-                                       wxJSONValue& param,
+                                       nlohmann::json& param,
                                        const std::string& outletName) {
     if (!pdfReport_) {
         // First section: create a new PDF document.
@@ -98,7 +98,7 @@ void PdfOutputWriter::CreateNewSection(DB::SQLiteBase& db,
 }
 
 void PdfOutputWriter::AppendData(std::shared_ptr<wpSQLResultSet> rs,
-                                 wxJSONValue& param,
+                                 nlohmann::json& param,
                                  bool freezeHeader) {
     (*genFn_)(nullptr, nullptr, pdfReport_, rs, param, freezeHeader);
 }
@@ -107,7 +107,7 @@ void PdfOutputWriter::ResetGenerator() {
     genFn_ = (ReportGenerator::Generator::Function)&ReportGenerator::Generator::AppendToPDF;
 }
 
-void PdfOutputWriter::SetGenerator(const std::string& directive, wxJSONValue& param) {
+void PdfOutputWriter::SetGenerator(const std::string& directive, nlohmann::json& param) {
     genFn_ = ReportGenerator::Generator::GetProcessor(directive, param);
 }
 
@@ -124,7 +124,7 @@ std::wstring PdfOutputWriter::Save(const std::wstring& baseName,
                                    const std::string& noDataText,
                                    const std::string& orientation,
                                    const std::string& name,
-                                   wxJSONValue& param,
+                                   nlohmann::json& param,
                                    const std::string& outletName) {
     auto fileName = baseName + L".pdf";
     if (!pdfReport_) {
