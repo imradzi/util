@@ -2,301 +2,194 @@
 #include "md2html.h"
 
 #include <cctype>
-#include <sstream>
+#include <cmark-gfm.h>
+#include <cmark-gfm-core-extensions.h>
+#include <cmark-gfm-extension_api.h>
 #include <string>
 #include <vector>
 
-std::string md2html(const std::string& md, bool darkMode) {
-    auto esc = [](const std::string& s) {
-        std::string out;
-        out.reserve(s.size());
-        for (char c : s) {
-            switch (c) {
-                case '&': out += "&amp;"; break;
-                case '<': out += "&lt;"; break;
-                case '>': out += "&gt;"; break;
-                case '"': out += "&quot;"; break;
-                default: out += c;
-            }
+// ── helpers ──────────────────────────────────────────────────────────
+
+static bool isNumericCell(const std::string& cell)
+{
+    std::string s = cell;
+    while (!s.empty() && s.front() == ' ') s.erase(0, 1);
+    while (!s.empty() && s.back() == ' ') s.pop_back();
+    if (s.empty()) return false;
+
+    if (s.front() == '~' || s.front() == '-' || s.front() == '+' || s.front() == '$')
+        s.erase(0, 1);
+    if (s.starts_with("RM ") || s.starts_with("RM"))
+        s.erase(0, s[2] == ' ' ? 3 : 2);
+    if (!s.empty() && s.back() == '%') s.pop_back();
+    if (s.empty()) return false;
+
+    bool hasDigit = false;
+    for (char c : s) {
+        if (std::isdigit(static_cast<unsigned char>(c))) { hasDigit = true; continue; }
+        if (c == ',' || c == '.') continue;
+        return false;
+    }
+    return hasDigit;
+}
+
+// Strip HTML tags from a string (for extracting plain-text cell content)
+static std::string stripTags(const std::string& html)
+{
+    std::string out;
+    bool inTag = false;
+    for (size_t i = 0; i < html.size(); ++i) {
+        if (html[i] == '<') { inTag = true; continue; }
+        if (html[i] == '>') { inTag = false; continue; }
+        if (!inTag) out += html[i];
+    }
+    return out;
+}
+
+// Post-process: add align=right to <td> in columns where all data cells are numeric
+static std::string postProcessTables(const std::string& html)
+{
+    std::string result;
+    size_t pos = 0;
+
+    while (true) {
+        size_t tStart = html.find("<table>", pos);
+        if (tStart == std::string::npos) { result += html.substr(pos); break; }
+        result += html.substr(pos, tStart - pos);
+
+        size_t tEnd = html.find("</table>", tStart);
+        if (tEnd == std::string::npos) { result += html.substr(tStart); break; }
+        tEnd += 8;  // past "</table>"
+
+        std::string table = html.substr(tStart, tEnd - tStart);
+
+        // ── collect rows ────────────────────────────────────────
+        std::vector<std::string> rows;
+        size_t rp = 0;
+        while (true) {
+            size_t trS = table.find("<tr>", rp);
+            if (trS == std::string::npos) break;
+            size_t trE = table.find("</tr>", trS);
+            if (trE == std::string::npos) break;
+            trE += 5;
+            rows.push_back(table.substr(trS, trE - trS));
+            rp = trE;
         }
-        return out;
-    };
+        if (rows.size() < 2) { result += table; pos = tEnd; continue; }
 
-    const char* bgColor = darkMode ? "#1e1e1e" : "#ffffff";
-    const char* textColor = darkMode ? "#e0e0e0" : "#000000";
-    std::string html = "<html><body bgcolor='" + std::string(bgColor) + "' text='" + std::string(textColor) + "'>";
-    html += "<font face='Arial,Helvetica,sans-serif' size=3>";
-
-    std::istringstream in(md);
-    std::string line, block;
-    bool inCodeBlock = false, inList = false, inOrderedList = false;
-    bool inTable = false;
-    std::vector<std::vector<std::string>> tableRows;  // buffered rows (header + data)
-
-    auto flushBlock = [&]() {
-        if (block.empty()) return;
-        html += block;
-        block.clear();
-    };
-    auto closeList = [&](bool& listFlag) {
-        if (listFlag) { html += (&listFlag == &inOrderedList) ? "</ol>" : "</ul>"; listFlag = false; }
-    };
-
-    // Determine if a cell's content looks numeric (e.g. "~35%", "42", "1,234.56", "RM 500")
-    auto isNumericCell = [](const std::string& cell) -> bool {
-        std::string s = cell;
-        while (!s.empty() && s.front() == ' ') s.erase(0, 1);
-        while (!s.empty() && s.back() == ' ') s.pop_back();
-        if (s.empty()) return false;
-        // Strip leading symbols
-        if (s.front() == '~' || s.front() == '-' || s.front() == '+' || s.front() == '$')
-            s.erase(0, 1);
-        if (s.starts_with("RM ") || s.starts_with("RM")) s.erase(0, s[2] == ' ' ? 3 : 2);
-        // Strip trailing %
-        if (!s.empty() && s.back() == '%') s.pop_back();
-        if (s.empty()) return false;
-        bool hasDigit = false;
-        for (char c : s) {
-            if (std::isdigit(static_cast<unsigned char>(c))) { hasDigit = true; continue; }
-            if (c == ',' || c == '.') continue;
-            return false;
-        }
-        return hasDigit;
-    };
-
-    // Emit the buffered table with right-aligned numeric columns
-    auto emitTable = [&]() {
-        if (tableRows.empty()) return;
-
-        // Determine column count (max across all rows)
+        // ── determine column count from header row ──────────────
         size_t ncols = 0;
-        for (auto& row : tableRows)
-            if (row.size() > ncols) ncols = row.size();
-
-        // Determine which columns are numeric (check all data rows for that column)
-        std::vector<bool> colIsNumeric(ncols, true);
-        bool hasDataRows = tableRows.size() > 1;  // row 0 = header
-        for (size_t c = 0; c < ncols; ++c) {
-            bool anyDataInCol = false;
-            for (size_t r = 1; r < tableRows.size(); ++r) {
-                if (c < tableRows[r].size() && !tableRows[r][c].empty()) {
-                    anyDataInCol = true;
-                    if (!isNumericCell(tableRows[r][c])) {
-                        colIsNumeric[c] = false;
-                        break;
-                    }
-                }
+        {
+            size_t cp = 0;
+            while ((cp = rows[0].find("<th>", cp)) != std::string::npos ||
+                   (cp = rows[0].find("<td>", cp)) != std::string::npos) {
+                ++ncols;
+                ++cp;
             }
-            if (!anyDataInCol) colIsNumeric[c] = false;
         }
+        if (ncols == 0) { result += table; pos = tEnd; continue; }
 
-        html += "<table border=1 cellpadding=4 cellspacing=0>";
-        for (size_t r = 0; r < tableRows.size(); ++r) {
-            html += "<tr>";
-            bool isHeader = (r == 0);
-            for (size_t c = 0; c < ncols; ++c) {
-                std::string cell = (c < tableRows[r].size()) ? tableRows[r][c] : "";
-                if (isHeader) {
-                    html += "<th>";
-                } else if (hasDataRows && colIsNumeric[c]) {
-                    html += "<td align=right>";
+        // ── analyse data rows ────────────────────────────────────
+        std::vector<bool> colNum(ncols, true);
+        std::vector<bool> colHasData(ncols, false);
+        for (size_t r = 1; r < rows.size(); ++r) {
+            size_t cp = 0, ci = 0;
+            while (ci < ncols) {
+                size_t tdS = rows[r].find("<td>", cp);
+                if (tdS == std::string::npos) break;
+                size_t tdE = rows[r].find("</td>", tdS);
+                if (tdE == std::string::npos) break;
+                std::string cellHtml = rows[r].substr(tdS + 4, tdE - tdS - 4);
+                std::string cellText = stripTags(cellHtml);
+                if (!cellText.empty()) {
+                    colHasData[ci] = true;
+                    if (!isNumericCell(cellText)) colNum[ci] = false;
+                }
+                cp = tdE + 5;
+                ++ci;
+            }
+        }
+        for (size_t c = 0; c < ncols; ++c)
+            if (!colHasData[c]) colNum[c] = false;
+
+        // ── rebuild table with alignment ─────────────────────────
+        std::string newTable = "<table>";
+        for (size_t r = 0; r < rows.size(); ++r) {
+            newTable += "<tr>";
+            bool isHdr = (r == 0);
+            size_t cp = 0, ci = 0;
+            const char* tag = isHdr ? "th" : "td";
+            while (ci < ncols) {
+                std::string openTag  = std::string("<") + tag + ">";
+                std::string closeTag = std::string("</") + tag + ">";
+                size_t cellS = rows[r].find(openTag, cp);
+                if (cellS == std::string::npos) break;
+                size_t cellE = rows[r].find(closeTag, cellS);
+                if (cellE == std::string::npos) break;
+                std::string inner = rows[r].substr(cellS + openTag.size(),
+                                                    cellE - cellS - openTag.size());
+                if (!isHdr && colNum[ci]) {
+                    newTable += "<td align=right>" + inner + "</td>";
+                } else if (isHdr) {
+                    newTable += "<th>" + inner + "</th>";
                 } else {
-                    html += "<td>";
+                    newTable += "<td>" + inner + "</td>";
                 }
-                html += esc(cell);
-                html += isHeader ? "</th>" : "</td>";
+                cp = cellE + closeTag.size();
+                ++ci;
             }
-            html += "</tr>";
+            newTable += "</tr>";
         }
-        html += "</table>";
-        tableRows.clear();
-    };
-
-    auto closeTable = [&]() {
-        emitTable();
-        inTable = false;
-    };
-
-    // Helper: split a table row by '|', trim each cell, return vector
-    auto splitTableRow = [](const std::string& row) -> std::vector<std::string> {
-        std::vector<std::string> cells;
-        size_t start = 0;
-        // Skip leading '|' if present
-        if (!row.empty() && row.front() == '|') start = 1;
-        size_t end = start;
-        while (end <= row.size()) {
-            if (end == row.size() || row[end] == '|') {
-                std::string cell = row.substr(start, end - start);
-                // Trim
-                while (!cell.empty() && cell.front() == ' ') cell.erase(0, 1);
-                while (!cell.empty() && cell.back() == ' ') cell.pop_back();
-                cells.push_back(cell);
-                start = end + 1;
-            }
-            ++end;
-        }
-        // Drop trailing empty cell caused by trailing '|' in the row
-        if (!cells.empty() && cells.back().empty())
-            cells.pop_back();
-        return cells;
-    };
-
-    // Check if a trimmed row is a table separator (e.g. |---|---| or |:---:|)
-    auto isTableSeparator = [](const std::string& trimmed) -> bool {
-        if (trimmed.empty() || trimmed.front() != '|') return false;
-        for (size_t i = 1; i + 1 < trimmed.size(); ++i) {
-            char c = trimmed[i];
-            if (c != '-' && c != ':' && c != '|' && c != ' ') return false;
-        }
-        return trimmed.find('-') != std::string::npos;
-    };
-
-    while (std::getline(in, line)) {
-        // Code block toggle
-        if (line.starts_with("```")) {
-            flushBlock();
-            closeList(inList); closeList(inOrderedList);
-            if (!inCodeBlock) {
-                inCodeBlock = true;
-                html += "<pre><code>";
-            } else {
-                html += "</code></pre>";
-                inCodeBlock = false;
-            }
-            continue;
-        }
-        if (inCodeBlock) {
-            html += esc(line) + "\n";
-            continue;
-        }
-
-        // Blank line — close lists, close table, and start new paragraph
-        if (line.empty()) {
-            flushBlock();
-            closeList(inList); closeList(inOrderedList);
-            closeTable();
-            if (!block.empty() || !html.ends_with("<p>"))
-                html += "<p>";
-            continue;
-        }
-
-        std::string trimmed = line;
-        // Trim leading spaces
-        while (!trimmed.empty() && trimmed.front() == ' ') trimmed.erase(0, 1);
-
-        // Table row detection: line starts with '|' and contains at least one more '|'
-        if (trimmed.front() == '|' && trimmed.find('|', 1) != std::string::npos) {
-            flushBlock();
-            closeList(inList); closeList(inOrderedList);
-
-            if (isTableSeparator(trimmed)) {
-                // Separator row: skip (don't buffer)
-                inTable = true;  // ensure we stay in table mode
-                continue;
-            }
-
-            if (!inTable) {
-                inTable = true;
-                tableRows.clear();
-            }
-
-            tableRows.push_back(splitTableRow(trimmed));
-            continue;
-        }
-
-        // Heading
-        if (trimmed.starts_with("###### ")) {
-            flushBlock(); closeList(inList); closeList(inOrderedList);
-            html += "<h6>" + esc(trimmed.substr(7)) + "</h6>";
-            continue;
-        }
-        if (trimmed.starts_with("##### ")) {
-            flushBlock(); closeList(inList); closeList(inOrderedList);
-            html += "<h5>" + esc(trimmed.substr(6)) + "</h5>";
-            continue;
-        }
-        if (trimmed.starts_with("#### ")) {
-            flushBlock(); closeList(inList); closeList(inOrderedList);
-            html += "<h4>" + esc(trimmed.substr(5)) + "</h4>";
-            continue;
-        }
-        if (trimmed.starts_with("### ")) {
-            flushBlock(); closeList(inList); closeList(inOrderedList);
-            html += "<h3>" + esc(trimmed.substr(4)) + "</h3>";
-            continue;
-        }
-        if (trimmed.starts_with("## ")) {
-            flushBlock(); closeList(inList); closeList(inOrderedList);
-            html += "<h2>" + esc(trimmed.substr(3)) + "</h2>";
-            continue;
-        }
-        if (trimmed.starts_with("# ")) {
-            flushBlock(); closeList(inList); closeList(inOrderedList);
-            html += "<h1>" + esc(trimmed.substr(2)) + "</h1>";
-            continue;
-        }
-
-        // Unordered list
-        if ((trimmed.starts_with("- ") || trimmed.starts_with("* ")) && trimmed.size() > 2) {
-            flushBlock(); closeList(inOrderedList);
-            if (!inList) { html += "<ul>"; inList = true; }
-            html += "<li>" + esc(trimmed.substr(2)) + "</li>";
-            continue;
-        }
-
-        // Ordered list
-        if (trimmed.size() > 3 && trimmed[0] >= '0' && trimmed[0] <= '9' && trimmed[1] == '.' && trimmed[2] == ' ') {
-            flushBlock(); closeList(inList);
-            if (!inOrderedList) { html += "<ol>"; inOrderedList = true; }
-            html += "<li>" + esc(trimmed.substr(3)) + "</li>";
-            continue;
-        }
-
-        // Regular paragraph line
-        closeList(inList); closeList(inOrderedList);
-        closeTable();
-        if (!block.empty()) block += " ";
-        block += esc(line);
+        newTable += "</table>";
+        result += newTable;
+        pos = tEnd;
     }
-    flushBlock();
-    closeList(inList); closeList(inOrderedList);
-    closeTable();
-    if (inCodeBlock) html += "</code></pre>";
+    return result;
+}
 
-    html += "</font></body></html>";
 
-    // Post-process for inline formatting (bold, italic, code, links)
-    // Run on the concatenated HTML using simple regex-style replacements.
-    // Order: code first (to avoid formatting inside code), then bold, italic, links.
-    auto replaceInline = [](std::string& s, const std::string& pattern,
-                             const std::string& openTag, const std::string& closeTag) {
-        size_t pos = 0;
-        while ((pos = s.find(pattern, pos)) != std::string::npos) {
-            size_t end = s.find(pattern, pos + pattern.size());
-            if (end == std::string::npos) break;
-            std::string inner = s.substr(pos + pattern.size(), end - pos - pattern.size());
-            s.replace(pos, end - pos + pattern.size(), openTag + inner + closeTag);
-            pos += openTag.size() + inner.size() + closeTag.size();
-        }
-    };
+// ── public API ──────────────────────────────────────────────────────
 
-    replaceInline(html, "`", "<code>", "</code>");
-    replaceInline(html, "**", "<b>", "</b>");
-    replaceInline(html, "*", "<i>", "</i>");
-    // Links: [text](url)
-    {
-        size_t pos = 0;
-        while ((pos = html.find("[", pos)) != std::string::npos) {
-            size_t mid = html.find("](", pos + 1);
-            if (mid == std::string::npos) break;
-            size_t end = html.find(")", mid + 2);
-            if (end == std::string::npos) break;
-            std::string text = html.substr(pos + 1, mid - pos - 1);
-            std::string url  = html.substr(mid + 2, end - mid - 2);
-            std::string anchor = "<a href='" + url + "'>" + text + "</a>";
-            html.replace(pos, end - pos + 1, anchor);
-            pos += anchor.size();
-        }
+std::string md2html(const std::string& md, bool darkMode)
+{
+    // 1. Register GFM extensions (tables, strikethrough, autolinks, tasklist)
+    static bool extensionsRegistered = false;
+    if (!extensionsRegistered) {
+        cmark_gfm_core_extensions_ensure_registered();
+        extensionsRegistered = true;
     }
-    return html;
+
+    // 2. Create parser, attach table extension, build extensions list
+    cmark_parser* parser = cmark_parser_new(CMARK_OPT_DEFAULT);
+    cmark_syntax_extension* tableExt = cmark_find_syntax_extension("table");
+    if (tableExt)
+        cmark_parser_attach_syntax_extension(parser, tableExt);
+
+    // 3. Parse Markdown → AST
+    cmark_parser_feed(parser, md.c_str(), md.size());
+    cmark_node* doc = cmark_parser_finish(parser);
+
+    // 4. Build extensions list for renderer
+    cmark_llist* exts = NULL;
+    if (tableExt)
+        exts = cmark_llist_append(NULL, exts, tableExt);
+
+    // 5. Render AST → HTML
+    char* raw = cmark_render_html(doc, CMARK_OPT_DEFAULT, exts);
+    std::string body = raw ? raw : "";
+    free(raw);
+
+    // 6. Cleanup
+    if (exts) cmark_llist_free(NULL, exts);
+    cmark_node_free(doc);
+    cmark_parser_free(parser);
+
+    // 7. Right-align numeric table columns
+    body = postProcessTables(body);
+
+    // 8. Wrap with dark / light theme
+    const char* bg = darkMode ? "#1e1e1e" : "#ffffff";
+    const char* fg = darkMode ? "#e0e0e0" : "#000000";
+    return "<html><body bgcolor='" + std::string(bg) + "' text='" + std::string(fg) + "'>"
+           + body + "</body></html>";
 }
