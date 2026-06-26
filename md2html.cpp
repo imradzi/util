@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-std::string md2html(const std::string& md) {
+std::string md2html(const std::string& md, bool darkMode) {
     auto esc = [](const std::string& s) {
         std::string out;
         out.reserve(s.size());
@@ -22,7 +22,9 @@ std::string md2html(const std::string& md) {
         return out;
     };
 
-    std::string html = "<html><body bgcolor='#ffffff' text='#000000'>";
+    const char* bgColor = darkMode ? "#1e1e1e" : "#ffffff";
+    const char* textColor = darkMode ? "#e0e0e0" : "#000000";
+    std::string html = "<html><body bgcolor='" + std::string(bgColor) + "' text='" + std::string(textColor) + "'>";
     html += "<font face='Arial,Helvetica,sans-serif' size=3>";
 
     std::istringstream in(md);
