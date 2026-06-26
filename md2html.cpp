@@ -49,6 +49,31 @@ static std::string stripTags(const std::string& html)
 // Post-process: add align=right to <td> in columns where all data cells are numeric
 static std::string postProcessTables(const std::string& html)
 {
+    // Helper: find next <tag...> for "th" or "td", return position of '<'
+    // and set out_end to position after '>', set out_inner to position after '>'.
+    auto findCellTag = [](const std::string& s, size_t start,
+                          std::string& out_tagName, size_t& out_tagEnd) -> size_t {
+        size_t tagStart = std::string::npos;
+        size_t foundTh = s.find("<th", start);
+        size_t foundTd = s.find("<td", start);
+        if (foundTh < foundTd) { tagStart = foundTh; out_tagName = "th"; }
+        else if (foundTd != std::string::npos) { tagStart = foundTd; out_tagName = "td"; }
+        if (tagStart == std::string::npos) return std::string::npos;
+        out_tagEnd = s.find('>', tagStart);
+        if (out_tagEnd == std::string::npos) return std::string::npos;
+        ++out_tagEnd;  // past '>'
+        return tagStart;
+    };
+
+    auto findCloseTag = [](const std::string& s, const std::string& tagName,
+                           size_t start, size_t& out_end) -> size_t {
+        std::string closeTag = "</" + tagName + ">";
+        size_t pos = s.find(closeTag, start);
+        if (pos == std::string::npos) return std::string::npos;
+        out_end = pos + closeTag.size();
+        return pos;
+    };
+
     std::string result;
     size_t pos = 0;
 
@@ -81,10 +106,11 @@ static std::string postProcessTables(const std::string& html)
         size_t ncols = 0;
         {
             size_t cp = 0;
-            while ((cp = rows[0].find("<th>", cp)) != std::string::npos ||
-                   (cp = rows[0].find("<td>", cp)) != std::string::npos) {
+            std::string tagName;
+            size_t tagEnd;
+            while (findCellTag(rows[0], cp, tagName, tagEnd) != std::string::npos) {
                 ++ncols;
-                ++cp;
+                cp = tagEnd;
             }
         }
         if (ncols == 0) { result += table; pos = tEnd; continue; }
@@ -95,17 +121,23 @@ static std::string postProcessTables(const std::string& html)
         for (size_t r = 1; r < rows.size(); ++r) {
             size_t cp = 0, ci = 0;
             while (ci < ncols) {
-                size_t tdS = rows[r].find("<td>", cp);
-                if (tdS == std::string::npos) break;
-                size_t tdE = rows[r].find("</td>", tdS);
-                if (tdE == std::string::npos) break;
-                std::string cellHtml = rows[r].substr(tdS + 4, tdE - tdS - 4);
+                std::string tagName;
+                size_t tagEnd;
+                size_t tagStart = findCellTag(rows[r], cp, tagName, tagEnd);
+                if (tagStart == std::string::npos) break;
+                if (tagName != "td") { cp = tagEnd; continue; }
+
+                size_t closeEnd;
+                size_t closeStart = findCloseTag(rows[r], "td", tagEnd, closeEnd);
+                if (closeStart == std::string::npos) break;
+
+                std::string cellHtml = rows[r].substr(tagEnd, closeStart - tagEnd);
                 std::string cellText = stripTags(cellHtml);
                 if (!cellText.empty()) {
                     colHasData[ci] = true;
                     if (!isNumericCell(cellText)) colNum[ci] = false;
                 }
-                cp = tdE + 5;
+                cp = closeEnd;
                 ++ci;
             }
         }
@@ -113,21 +145,26 @@ static std::string postProcessTables(const std::string& html)
             if (!colHasData[c]) colNum[c] = false;
 
         // ── rebuild table with alignment ─────────────────────────
-        std::string newTable = "<table>";
+        std::string newTable = "<table border=1 cellpadding=4 cellspacing=0>";
         for (size_t r = 0; r < rows.size(); ++r) {
             newTable += "<tr>";
             bool isHdr = (r == 0);
             size_t cp = 0, ci = 0;
             const char* tag = isHdr ? "th" : "td";
             while (ci < ncols) {
-                std::string openTag  = std::string("<") + tag + ">";
-                std::string closeTag = std::string("</") + tag + ">";
-                size_t cellS = rows[r].find(openTag, cp);
-                if (cellS == std::string::npos) break;
-                size_t cellE = rows[r].find(closeTag, cellS);
-                if (cellE == std::string::npos) break;
-                std::string inner = rows[r].substr(cellS + openTag.size(),
-                                                    cellE - cellS - openTag.size());
+                std::string tagName;
+                size_t tagEnd;
+                size_t tagStart = findCellTag(rows[r], cp, tagName, tagEnd);
+                if (tagStart == std::string::npos) break;
+
+                // Skip non-matching tags (e.g., <th> in a data row if malformed)
+                if (tagName != tag) { cp = tagEnd; continue; }
+
+                size_t closeEnd;
+                size_t closeStart = findCloseTag(rows[r], tag, tagEnd, closeEnd);
+                if (closeStart == std::string::npos) break;
+
+                std::string inner = rows[r].substr(tagEnd, closeStart - tagEnd);
                 if (!isHdr && colNum[ci]) {
                     newTable += "<td align=right>" + inner + "</td>";
                 } else if (isHdr) {
@@ -135,7 +172,7 @@ static std::string postProcessTables(const std::string& html)
                 } else {
                     newTable += "<td>" + inner + "</td>";
                 }
-                cp = cellE + closeTag.size();
+                cp = closeEnd;
                 ++ci;
             }
             newTable += "</tr>";
@@ -146,6 +183,9 @@ static std::string postProcessTables(const std::string& html)
     }
     return result;
 }
+
+
+// ── public API
 
 
 // ── public API ──────────────────────────────────────────────────────
@@ -169,10 +209,11 @@ std::string md2html(const std::string& md, bool darkMode)
     cmark_parser_feed(parser, md.c_str(), md.size());
     cmark_node* doc = cmark_parser_finish(parser);
 
-    // 4. Build extensions list for renderer
+    // 4. Build extensions list for renderer (use default allocator, not NULL)
+    cmark_mem* mem = cmark_get_default_mem_allocator();
     cmark_llist* exts = NULL;
     if (tableExt)
-        exts = cmark_llist_append(NULL, exts, tableExt);
+        exts = cmark_llist_append(mem, exts, tableExt);
 
     // 5. Render AST → HTML
     char* raw = cmark_render_html(doc, CMARK_OPT_DEFAULT, exts);
@@ -180,14 +221,23 @@ std::string md2html(const std::string& md, bool darkMode)
     free(raw);
 
     // 6. Cleanup
-    if (exts) cmark_llist_free(NULL, exts);
+    if (exts) cmark_llist_free(mem, exts);
     cmark_node_free(doc);
     cmark_parser_free(parser);
 
-    // 7. Right-align numeric table columns
+    // 7. Add table borders (cmark-gfm outputs plain <table>)
+    {
+        size_t p = 0;
+        while ((p = body.find("<table>", p)) != std::string::npos) {
+            body.replace(p, 7, "<table border=1 cellpadding=4 cellspacing=0>");
+            p += 42;  // length of replacement string
+        }
+    }
+
+    // 8. Right-align numeric table columns
     body = postProcessTables(body);
 
-    // 8. Wrap with dark / light theme
+    // 9. Wrap with dark / light theme
     const char* bg = darkMode ? "#1e1e1e" : "#ffffff";
     const char* fg = darkMode ? "#e0e0e0" : "#000000";
     return "<html><body bgcolor='" + std::string(bg) + "' text='" + std::string(fg) + "'>"
