@@ -1,7 +1,7 @@
 #pragma once
 #include <memory>
 #include <string>
-#include "jsonval.h"
+#include <nlohmann/json.hpp>
 #include "ExcelReader.h"
 #include "SQLite3xlsFormatter.h"
 
@@ -21,19 +21,19 @@ public:
                                   int sheetNo,
                                   const std::string& name,
                                   const std::string& sel,
-                                  wxJSONValue& param,
+                                  nlohmann::json& param,
                                   const std::string& outletName) = 0;
 
     // Append data rows to the current section/sheet.
     virtual void AppendData(std::shared_ptr<wpSQLResultSet> rs,
-                            wxJSONValue& param,
+                            nlohmann::json& param,
                             bool freezeHeader) = 0;
 
     // Reset the generator function pointer back to default for this output type.
     virtual void ResetGenerator() = 0;
 
     // Set a custom generator from a script directive (e.g. @groupBy).
-    virtual void SetGenerator(const std::string& directive, wxJSONValue& param) = 0;
+    virtual void SetGenerator(const std::string& directive, nlohmann::json& param) = 0;
 
     // Returns true if this writer should accept lines when the given directive is active.
     // e.g. "@ifPDF" -> true for PdfOutputWriter, "@ifExcel" -> true for ExcelOutputWriter.
@@ -49,7 +49,7 @@ public:
                               const std::string& noDataText,
                               const std::string& orientation,
                               const std::string& name,
-                              wxJSONValue& param,
+                              nlohmann::json& param,
                               const std::string& outletName) = 0;
 };
 
@@ -69,15 +69,15 @@ public:
                           int sheetNo,
                           const std::string& name,
                           const std::string& sel,
-                          wxJSONValue& param,
+                          nlohmann::json& param,
                           const std::string& outletName) override;
 
     void AppendData(std::shared_ptr<wpSQLResultSet> rs,
-                    wxJSONValue& param,
+                    nlohmann::json& param,
                     bool freezeHeader) override;
 
     void ResetGenerator() override;
-    void SetGenerator(const std::string& directive, wxJSONValue& param) override;
+    void SetGenerator(const std::string& directive, nlohmann::json& param) override;
     bool AcceptsDirective(const std::string& directive) const override;
     bool HasSection() const override;
 
@@ -86,7 +86,7 @@ public:
                       const std::string& noDataText,
                       const std::string& orientation,
                       const std::string& name,
-                      wxJSONValue& param,
+                      nlohmann::json& param,
                       const std::string& outletName) override;
 };
 
@@ -105,15 +105,15 @@ public:
                           int sheetNo,
                           const std::string& name,
                           const std::string& sel,
-                          wxJSONValue& param,
+                          nlohmann::json& param,
                           const std::string& outletName) override;
 
     void AppendData(std::shared_ptr<wpSQLResultSet> rs,
-                    wxJSONValue& param,
+                    nlohmann::json& param,
                     bool freezeHeader) override;
 
     void ResetGenerator() override;
-    void SetGenerator(const std::string& directive, wxJSONValue& param) override;
+    void SetGenerator(const std::string& directive, nlohmann::json& param) override;
     bool AcceptsDirective(const std::string& directive) const override;
     bool HasSection() const override;
 
@@ -122,6 +122,6 @@ public:
                       const std::string& noDataText,
                       const std::string& orientation,
                       const std::string& name,
-                      wxJSONValue& param,
+                      nlohmann::json& param,
                       const std::string& outletName) override;
 };

@@ -131,7 +131,7 @@ void DB::XLSColumnFormatter::WriteString(long row, int col, int i, bool isHighli
 #endif
 }
 
-wxJSONValue DB::XLSColumnFormatter::emptyJSON;
+nlohmann::json DB::XLSColumnFormatter::emptyJSON;
 
 DB::XLSColumnFormatter::ColumnDefinition::ColumnDefinition() : fmt(NULL),
                                                                fmtHighlight(NULL),
@@ -147,12 +147,12 @@ DB::XLSColumnFormatter::ColumnDefinition::ColumnDefinition() : fmt(NULL),
                                                                nRecPage(0) {}
 
 #ifndef NO_XLS
-DB::XLSColumnFormatter::XLSColumnFormatter(ExcelReader *xlReader, libxl::Sheet *xlsSheet, std::shared_ptr<wpSQLResultSet> resultSet, bool freezeHeader, wxJSONValue &param) : rs(resultSet), xlr(xlReader), sheet(xlsSheet) {
+DB::XLSColumnFormatter::XLSColumnFormatter(ExcelReader *xlReader, libxl::Sheet *xlsSheet, std::shared_ptr<wpSQLResultSet> resultSet, bool freezeHeader, nlohmann::json &param) : rs(resultSet), xlr(xlReader), sheet(xlsSheet) {
 #else
-DB::XLSColumnFormatter::XLSColumnFormatter(void *, void *, std::shared_ptr<wpSQLResultSet> resultSet, bool freezeHeader, wxJSONValue &param) : rs(resultSet) {
+DB::XLSColumnFormatter::XLSColumnFormatter(void *, void *, std::shared_ptr<wpSQLResultSet> resultSet, bool freezeHeader, nlohmann::json &param) : rs(resultSet) {
 #endif
-    if (!param.HasMember("numberOfdimensions")) param["numberOfdimensions"] = 1;
-    unsigned int nDim = wxAtol(param["numberOfdimensions"].AsString());
+    if (!param.contains("numberOfdimensions")) param["numberOfdimensions"] = 1;
+    unsigned int nDim = param["numberOfdimensions"].get<int>();
     // int nMeasurements = param["aggregateFunction"].Size();
 
     int row = 0, col = 0;
@@ -166,16 +166,16 @@ DB::XLSColumnFormatter::XLSColumnFormatter(void *, void *, std::shared_ptr<wpSQL
     const unsigned int nCol = rs->GetColumnCount();
     data = nullptr;
     bool hasExpression = false;
-    bool defaultNumberFormatter = param.HasMember("default-number-dividefactor") ? param["default-number-dividefactor"].AsBool() : false;
+    bool defaultNumberFormatter = param.contains("default-number-dividefactor") ? param["default-number-dividefactor"].get<bool>() : false;
     for (unsigned int i = 0; i < nCol; i++) {
         auto &colDef = defArray.emplace_back(new ColumnDefinition());
         ColumnDefinition &cdef = *colDef;
 
         cdef.colName = String::to_wstring(rs->GetColumnName(i));
-        if (param.HasMember("subtotal")) {  // from @footer
-            wxJSONValue &v = param["subtotal"];
-            if (v.IsArray() && v.Size() > i)
-                cdef.sumFunction = v[i].AsString();
+        if (param.contains("subtotal")) {  // from @footer
+            auto& v = param["subtotal"];
+            if (v.is_array() && v.size() > i)
+                cdef.sumFunction = String::to_wstring(v[i].get<std::string>());
         }
 
         if (boost::iequals(cdef.sumFunction, "sum") || boost::iequals(cdef.sumFunction, "avg")) {
@@ -186,10 +186,10 @@ DB::XLSColumnFormatter::XLSColumnFormatter(void *, void *, std::shared_ptr<wpSQL
             cdef.footerExpression = DB::CreateExpression(cdef.sumFunction, nCol);
         }
 
-        if (param.HasMember("row-function")) {
-            wxJSONValue &v = param["row-function"];
-            if (v.IsArray() && v.Size() > i) {
-                std::wstring expr(v[i].AsString());
+        if (param.contains("row-function")) {
+            auto& v = param["row-function"];
+            if (v.is_array() && v.size() > i) {
+                std::wstring expr = String::to_wstring(v[i].get<std::string>());
                 if (!expr.empty()) {
                     // if (cdef.expression) DB::DestroyExpression(cdef.expression);
                     cdef.expression = DB::CreateExpression(expr, nCol);
@@ -197,10 +197,10 @@ DB::XLSColumnFormatter::XLSColumnFormatter(void *, void *, std::shared_ptr<wpSQL
                 }
             }
         }
-        if (param.HasMember("column-sizes")) {
-            wxJSONValue &v = param["column-sizes"];
-            if (v.IsArray() && v.Size() > i) {
-                cdef.size = v[i].AsInt();
+        if (param.contains("column-sizes")) {
+            auto& v = param["column-sizes"];
+            if (v.is_array() && v.size() > i) {
+                cdef.size = v[i].get<int>();
             }
         }
         size_t x;
