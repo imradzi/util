@@ -286,11 +286,7 @@ libxl::Sheet *ReportGenerator::Generator::CreateNewSheet(ExcelReader *xlsReader,
 #endif
 
 #ifndef NO_XLS
-<<<<<<< HEAD
 libxl::Sheet *ReportGenerator::Generator::AppendGroupingToExcelSheet(ExcelReader *xlsReader, libxl::Sheet *sheet, std::shared_ptr<HtmlReportBuilder> /*unused*/, std::shared_ptr<wpSQLResultSet> rs, wxJSONValue &param, bool freezeHeader) {
-=======
-libxl::Sheet *ReportGenerator::Generator::AppendGroupingToExcelSheet(ExcelReader *xlsReader, libxl::Sheet *sheet, std::shared_ptr<ReportPDF> /*unused*/, std::shared_ptr<wpSQLResultSet> rs, nlohmann::json &param, bool freezeHeader) {
->>>>>>> with_wxpdf
     if (!xlsReader || !sheet) return NULL;
     ExcelReader &xlr(*xlsReader);
     int row = 0, col = 0;
@@ -384,11 +380,7 @@ libxl::Sheet *ReportGenerator::Generator::AppendGroupingToExcelSheet(ExcelReader
     return sheet;
 }
 
-<<<<<<< HEAD
 libxl::Sheet *ReportGenerator::Generator::AppendToExcelSheet(ExcelReader *xlsReader, libxl::Sheet *sheet, std::shared_ptr<HtmlReportBuilder> /*unused*/, std::shared_ptr<wpSQLResultSet> rs, wxJSONValue &param, bool freezeHeader) {
-=======
-libxl::Sheet *ReportGenerator::Generator::AppendToExcelSheet(ExcelReader *xlsReader, libxl::Sheet *sheet, std::shared_ptr<ReportPDF> /*unused*/, std::shared_ptr<wpSQLResultSet> rs, nlohmann::json &param, bool freezeHeader) {
->>>>>>> with_wxpdf
     if (!xlsReader || !sheet) return NULL;
     ExcelReader &xlr(*xlsReader);
     int row = 0, col = 0;
@@ -447,7 +439,6 @@ libxl::Sheet *ReportGenerator::Generator::AppendToExcelSheet(ExcelReader *xlsRea
 }
 #endif
 
-<<<<<<< HEAD
 std::shared_ptr<HtmlReportBuilder> ReportGenerator::Generator::CreateNewPDF(std::shared_ptr<wpSQLResultSet> rs, const std::wstring &orientation, const std::wstring &sectionName, const std::wstring &title, const std::wstring &subTitle, wxJSONValue &param, const std::wstring outletName) {
     LOG_INFO("CreateNewPDF (HtmlReportBuilder)");
     std::string orient = "Portrait";
@@ -471,36 +462,6 @@ std::shared_ptr<HtmlReportBuilder> ReportGenerator::Generator::CreateNewPDF(std:
     }
 
     builder->setBreakPageOn(param.HasMember("break-page"));
-=======
-std::shared_ptr<ReportPDF> ReportGenerator::Generator::CreateNewPDF(std::shared_ptr<wpSQLResultSet> rs, const std::wstring &orientation, const std::wstring &sectionName, const std::wstring &title, const std::wstring &subTitle, nlohmann::json &param, const std::wstring outletName) {
-    LOG_INFO("CreateNewPDF");
-    int pageOrientation = wxPORTRAIT;
-    if (boost::iequals(orientation, "Landscape")) pageOrientation = wxLANDSCAPE;
-    if (boost::iequals(orientation, "L")) pageOrientation = wxLANDSCAPE;
-    auto pdf = std::make_shared<ReportPDF>(title, outletName, pageOrientation);
-    pdf->subTitle = String::to_wstring(subTitle);
-    pdf->sectionName = String::to_wstring(sectionName);
-    pdf->SetAuthor("PharmaPOS");
-    pdf->SetTitle(title);
-    pdf->SetFont("Arial", "B", 8);
-    pdf->SetAutoPageBreak(false);
-    if (rs == NULL) return pdf;
-
-    const int nCol = rs->GetColumnCount();
-    DB::XLSColumnFormatter *c = pdf->formatter = new DB::XLSColumnFormatter(NULL, NULL, rs, false, param);
-    if (!param.contains("column-sizes")) {
-        // while (rs->NextRow()) {
-        //	for (int i = 0; i < nCol; i++) {
-        //		std::string v = c->GetString(i, true);
-        //		if (v.length() > c->def()[i]->size) c->def()[i]->size = v.length();
-        //	}
-        // }
-        for (int i = 0; i < nCol; i++)
-            c->def()[i]->size = 1;
-    }
-
-    pdf->breakPageOn = param.contains("break-page");
->>>>>>> with_wxpdf
 
     // Store formatter pointer for later use in AppendToPDF
     // (formatter is managed via the builder's user data — we store it and delete in AppendToPDF)
@@ -570,13 +531,7 @@ static void computeAndSetGrandTotal(HtmlReportBuilder &builder, DB::XLSColumnFor
 }
 
 // #ifdef NO_XLS
-<<<<<<< HEAD
 libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Sheet *, std::shared_ptr<HtmlReportBuilder> report, std::shared_ptr<wpSQLResultSet> rs, wxJSONValue &param, bool /*freezeHeader*/) {
-=======
-libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Sheet *, std::shared_ptr<ReportPDF> report, std::shared_ptr<wpSQLResultSet> rs, nlohmann::json &param, bool /*freezeHeader*/) {
-// #else
-// libxl::Sheet *ReportGenerator::Generator::AppendToPDF(std::shared_ptr<ReportPDF> report, std::shared_ptr<wpSQLResultSet> rs, nlohmann::json &param, bool /*freezeHeader*/) {
->>>>>>> with_wxpdf
 // #endif
 
     if (!report) throw std::runtime_error("AppendToPDF: report is NULL!!!");
@@ -586,39 +541,9 @@ libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Shee
     if (!fmt) throw std::runtime_error("AppendToPDF: formatter is NULL!");
 
     const int nCol = rs->GetColumnCount();
-<<<<<<< HEAD
     int startOfs = (builder.breakPageOn() ? 1 : 0);
 
     // Check for formula columns
-=======
-    if (!pdf.formatter || int(pdf.formatter->def().size()) != nCol) {
-        if (pdf.formatter) {
-            delete pdf.formatter;
-            pdf.formatter = nullptr;
-        }
-        DB::XLSColumnFormatter *c = pdf.formatter = new DB::XLSColumnFormatter(nullptr, nullptr, rs, false, param);
-        if (!param.contains("column-sizes")) {
-            for (int i = 0; i < nCol; i++)
-                c->def()[i]->size = 1;
-        }
-        pdf.breakPageOn = param.contains("break-page");
-        double totLength = 0;
-        for (int i = (pdf.breakPageOn ? 1 : 0); i < nCol; i++) {
-            totLength += c->def()[i]->size;
-        }
-        double w = pdf.GetPageWidth() - pdf.GetRightMargin() - pdf.GetLeftMargin();
-        for (int i = (pdf.breakPageOn ? 1 : 0); i < nCol; i++) {
-            c->def()[i]->size = double(c->def()[i]->size) / totLength * w;
-        }
-    }
-    DB::XLSColumnFormatter *fmt = pdf.formatter;
-    int lineheight = param.contains("lineheight") ? param["lineheight"].get<int>() : 5;
-    std::string fontName = param.contains("fontname") ? param["fontname"].get<std::string>() : "";
-    std::string fontType = param.contains("fonttype") ? param["fonttype"].get<std::string>() : "";
-    int fontSize = param.contains("fontsize") ? param["fontsize"].get<int>() : 7;
-    if (!fontName.empty())
-        pdf.SetFont(fontName, fontType, fontSize);
->>>>>>> with_wxpdf
     bool formulaExists = false;
     for (int i = 0; i < nCol; i++) {
         DB::XLSColumnFormatter::ColumnDefinition &cdef = *fmt->def()[i];
@@ -628,29 +553,8 @@ libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Shee
         }
     }
 
-<<<<<<< HEAD
     // Key column deduplication setup
     std::vector<bool> keyColumns(nCol, false);
-=======
-    std::vector<bool> keyColumns;
-    keyColumns.resize(nCol);
-    std::vector<std::string> prevValues;
-    prevValues.resize(nCol);
-    std::vector<std::string> currValues;
-    currValues.resize(nCol);
-    std::vector<std::vector<std::string>> buffer;
-    buffer.resize(nCol);
-
-    std::vector<bool> toCheckDup;
-    toCheckDup.resize(nCol);
-    if (param.contains("removedup")) {
-        for (unsigned int i = 0; i < param["removedup"].size(); i++) {
-            int j = param["removedup"][i].get<int>();
-            if (j >= 0) toCheckDup[j] = true;
-        }
-    }
-    int startOfs = (pdf.breakPageOn ? 1 : 0);
->>>>>>> with_wxpdf
     bool compareKey = false;
     bool showAllKeys = param.contains("show-all-keys") && param["show-all-keys"].get<bool>();
     if (param.contains("key-columns")) {
@@ -936,7 +840,6 @@ std::vector<std::vector<std::string>> ReportGenerator::Generator::GetVectorResul
 
 } // namespace ReportGenerator
 
-<<<<<<< HEAD
 // CreateNewSection for HtmlReportBuilder — called from PdfOutputWriter for multi-section reports
 void HtmlReportBuilder_CreateNewSection(HtmlReportBuilder &builder, DB::SQLiteBase &/*db*/, std::shared_ptr<wpSQLResultSet> rs, const std::string &orientation, const std::string &sName, const std::string &ttl, const std::string &sTtl, wxJSONValue &param) {
     LOG_INFO("HtmlReportBuilder_CreateNewSection");
@@ -944,19 +847,11 @@ void HtmlReportBuilder_CreateNewSection(HtmlReportBuilder &builder, DB::SQLiteBa
         builder.setOrientation("Landscape");
     else
         builder.setOrientation("Portrait");
-=======
-void ReportPDF::CreateNewSection(DB::SQLiteBase &db, std::shared_ptr<wpSQLResultSet> rs, const std::string &orientation, const std::string &sName, const std::string &ttl, const std::string &sTtl, nlohmann::json &param) {
-    LOG_INFO("CreateNewSection");
-    pageOrientation = wxPORTRAIT;
-    if (boost::iequals(orientation, "Landscape")) pageOrientation = wxLANDSCAPE;
-    if (boost::iequals(orientation, "L")) pageOrientation = wxLANDSCAPE;
->>>>>>> with_wxpdf
 
     if (!sTtl.empty()) builder.setSubtitle(sTtl);
 
     const int nCol = rs->GetColumnCount();
 
-<<<<<<< HEAD
     // Replace formatter
     auto *c = new DB::XLSColumnFormatter(NULL, NULL, rs, false, param);
 
@@ -973,26 +868,6 @@ void ReportPDF::CreateNewSection(DB::SQLiteBase &db, std::shared_ptr<wpSQLResult
 
     builder.setBreakPageOn(param.HasMember("break-page"));
     builder.setFormatterPtr(c);
-=======
-    SetFont("Arial", "B", 8);
-    SetAutoPageBreak(false);
-    if (formatter) delete formatter;
-    DB::XLSColumnFormatter *c = formatter = new DB::XLSColumnFormatter(NULL, NULL, rs, false, param);
-    if (!param.contains("column-sizes")) {
-        while (rs->NextRow()) {
-            for (int i = 0; i < nCol; i++) {
-                auto v = c->GetString(i, true);
-                if (v.length() > c->def()[i]->size) c->def()[i]->size = v.length();
-            }
-        }
-        for (int i = 0; i < nCol; i++) {
-            if (boost::iequals(c->def()[i]->sumFunction, "sum"))
-                c->def()[i]->size += 3;  // add 2 digit for total
-        }
-    }
-
-    breakPageOn = param.contains("break-page");
->>>>>>> with_wxpdf
 
     // Start a new section
     builder.newSection(sName);
