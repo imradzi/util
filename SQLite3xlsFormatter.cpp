@@ -286,7 +286,7 @@ libxl::Sheet *ReportGenerator::Generator::CreateNewSheet(ExcelReader *xlsReader,
 #endif
 
 #ifndef NO_XLS
-libxl::Sheet *ReportGenerator::Generator::AppendGroupingToExcelSheet(ExcelReader *xlsReader, libxl::Sheet *sheet, std::shared_ptr<HtmlReportBuilder> /*unused*/, std::shared_ptr<wpSQLResultSet> rs, wxJSONValue &param, bool freezeHeader) {
+libxl::Sheet *ReportGenerator::Generator::AppendGroupingToExcelSheet(ExcelReader *xlsReader, libxl::Sheet *sheet, std::shared_ptr<HtmlReportBuilder> /*unused*/, std::shared_ptr<wpSQLResultSet> rs, nlohmann::json &param, bool freezeHeader) {
     if (!xlsReader || !sheet) return NULL;
     ExcelReader &xlr(*xlsReader);
     int row = 0, col = 0;
@@ -380,7 +380,7 @@ libxl::Sheet *ReportGenerator::Generator::AppendGroupingToExcelSheet(ExcelReader
     return sheet;
 }
 
-libxl::Sheet *ReportGenerator::Generator::AppendToExcelSheet(ExcelReader *xlsReader, libxl::Sheet *sheet, std::shared_ptr<HtmlReportBuilder> /*unused*/, std::shared_ptr<wpSQLResultSet> rs, wxJSONValue &param, bool freezeHeader) {
+libxl::Sheet *ReportGenerator::Generator::AppendToExcelSheet(ExcelReader *xlsReader, libxl::Sheet *sheet, std::shared_ptr<HtmlReportBuilder> /*unused*/, std::shared_ptr<wpSQLResultSet> rs, nlohmann::json &param, bool freezeHeader) {
     if (!xlsReader || !sheet) return NULL;
     ExcelReader &xlr(*xlsReader);
     int row = 0, col = 0;
@@ -439,7 +439,7 @@ libxl::Sheet *ReportGenerator::Generator::AppendToExcelSheet(ExcelReader *xlsRea
 }
 #endif
 
-std::shared_ptr<HtmlReportBuilder> ReportGenerator::Generator::CreateNewPDF(std::shared_ptr<wpSQLResultSet> rs, const std::wstring &orientation, const std::wstring &sectionName, const std::wstring &title, const std::wstring &subTitle, wxJSONValue &param, const std::wstring outletName) {
+std::shared_ptr<HtmlReportBuilder> ReportGenerator::Generator::CreateNewPDF(std::shared_ptr<wpSQLResultSet> rs, const std::wstring &orientation, const std::wstring &sectionName, const std::wstring &title, const std::wstring &subTitle, nlohmann::json &param, const std::wstring outletName) {
     LOG_INFO("CreateNewPDF (HtmlReportBuilder)");
     std::string orient = "Portrait";
     if (boost::iequals(orientation, "Landscape") || boost::iequals(orientation, "L")) orient = "Landscape";
@@ -461,7 +461,7 @@ std::shared_ptr<HtmlReportBuilder> ReportGenerator::Generator::CreateNewPDF(std:
             String::to_string(cdef.sumFunction));
     }
 
-    builder->setBreakPageOn(param.HasMember("break-page"));
+    builder->setBreakPageOn(param.contains("break-page"));
 
     // Store formatter pointer for later use in AppendToPDF
     // (formatter is managed via the builder's user data — we store it and delete in AppendToPDF)
@@ -531,7 +531,7 @@ static void computeAndSetGrandTotal(HtmlReportBuilder &builder, DB::XLSColumnFor
 }
 
 // #ifdef NO_XLS
-libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Sheet *, std::shared_ptr<HtmlReportBuilder> report, std::shared_ptr<wpSQLResultSet> rs, wxJSONValue &param, bool /*freezeHeader*/) {
+libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Sheet *, std::shared_ptr<HtmlReportBuilder> report, std::shared_ptr<wpSQLResultSet> rs, nlohmann::json &param, bool /*freezeHeader*/) {
 // #endif
 
     if (!report) throw std::runtime_error("AppendToPDF: report is NULL!!!");
@@ -841,7 +841,7 @@ std::vector<std::vector<std::string>> ReportGenerator::Generator::GetVectorResul
 } // namespace ReportGenerator
 
 // CreateNewSection for HtmlReportBuilder — called from PdfOutputWriter for multi-section reports
-void HtmlReportBuilder_CreateNewSection(HtmlReportBuilder &builder, DB::SQLiteBase &/*db*/, std::shared_ptr<wpSQLResultSet> rs, const std::string &orientation, const std::string &sName, const std::string &ttl, const std::string &sTtl, wxJSONValue &param) {
+void HtmlReportBuilder_CreateNewSection(HtmlReportBuilder &builder, DB::SQLiteBase &/*db*/, std::shared_ptr<wpSQLResultSet> rs, const std::string &orientation, const std::string &sName, const std::string &ttl, const std::string &sTtl, nlohmann::json &param) {
     LOG_INFO("HtmlReportBuilder_CreateNewSection");
     if (boost::iequals(orientation, "Landscape") || boost::iequals(orientation, "L"))
         builder.setOrientation("Landscape");
@@ -866,7 +866,7 @@ void HtmlReportBuilder_CreateNewSection(HtmlReportBuilder &builder, DB::SQLiteBa
             String::to_string(cdef.sumFunction));
     }
 
-    builder.setBreakPageOn(param.HasMember("break-page"));
+    builder.setBreakPageOn(param.contains("break-page"));
     builder.setFormatterPtr(c);
 
     // Start a new section
