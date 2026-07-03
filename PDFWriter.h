@@ -66,6 +66,8 @@ namespace DB {
         double *data;
 
     public:
+        void SetResultSet(std::shared_ptr<wpSQLResultSet> newRs) { rs = newRs; }
+
 #ifndef NO_XLS
         libxl::Format *GetXLSFormat(int i, bool highlight = false) {
             assert(i >= 0 && i < int(defArray.size()));

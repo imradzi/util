@@ -540,6 +540,9 @@ libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Shee
     DB::XLSColumnFormatter *fmt = builder.formatterPtr<DB::XLSColumnFormatter>();
     if (!fmt) throw std::runtime_error("AppendToPDF: formatter is NULL!");
 
+    // Switch formatter to the current query's result set
+    fmt->SetResultSet(rs);
+
     const int nCol = rs->GetColumnCount();
     int startOfs = (builder.breakPageOn() ? 1 : 0);
 
@@ -571,11 +574,15 @@ libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Shee
     // Current section's page title for break-page
     std::string currentPageTitle;
     bool firstRow = true;
-
-    // Start first section
-    builder.newSection();
+    bool hasRows = false;
 
     while (rs->NextRow()) {
+        // Create the first section only when we have data
+        if (!hasRows) {
+            hasRows = true;
+            builder.newSection();
+        }
+
         // Handle break-page: new section when column 0 value changes
         if (builder.breakPageOn()) {
             auto v = String::to_string(fmt->GetString(0, true));
@@ -648,11 +655,13 @@ libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Shee
         firstRow = false;
     }
 
-    // Compute page total for the last section
-    computeAndSetPageTotal(builder, fmt, nCol, startOfs);
+    // Compute page total for the last section (only if we added rows)
+    if (hasRows) {
+        computeAndSetPageTotal(builder, fmt, nCol, startOfs);
 
-    // Compute and set grand total
-    computeAndSetGrandTotal(builder, fmt, nCol, startOfs);
+        // Compute and set grand total
+        computeAndSetGrandTotal(builder, fmt, nCol, startOfs);
+    }
 
     return nullptr;
 }
