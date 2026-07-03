@@ -34,7 +34,7 @@
 #include "words.h"
 #include "rDb.h"
 #include "ExcelReader.h"
-#include "PDFWriter.h"
+#include "XLSColumnFormatter.h"
 #include "xmlParser.h"
 #include "logger/logger.h"
 #include <fmt/format.h>

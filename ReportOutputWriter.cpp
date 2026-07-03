@@ -1,6 +1,5 @@
 #include "ReportOutputWriter.h"
 #include "ExcelReader.h"
-#include "PDFWriter.h"
 #include "html_report_builder.h"
 #include "wpObject.h"
 #include <boost/algorithm/string.hpp>
