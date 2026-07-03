@@ -40,6 +40,7 @@
 #include "xmlParser.h"
 #include "logger/logger.h"
 #include "SQLite3xlsFormatter.h"
+#include <fmt/format.h>
 
 bool g_useXLSXformat = false;
 
@@ -559,7 +560,6 @@ libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Shee
     // Key column deduplication setup
     std::vector<bool> keyColumns(nCol, false);
     bool compareKey = false;
-    bool showAllKeys = param.contains("show-all-keys") && param["show-all-keys"].get<bool>();
     if (param.contains("key-columns")) {
         for (unsigned int i = 0; i < param["key-columns"].size(); i++) {
             int j = param["key-columns"][i].get<int>();
@@ -576,6 +576,89 @@ libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Shee
     bool firstRow = true;
     bool hasRows = false;
 
+    // --- Sub-table grouping state (active when compareKey is true) ---
+    int firstDetailCol = -1, lastDetailCol = -1, detailColspan = 0;
+    if (compareKey) {
+        builder.setKeyColumns(keyColumns);
+        for (int i = startOfs; i < nCol; i++) {
+            if (!keyColumns[i]) {
+                if (firstDetailCol < 0) firstDetailCol = i;
+                lastDetailCol = i;
+            }
+        }
+        detailColspan = (firstDetailCol >= 0) ? (lastDetailCol - firstDetailCol + 1) : 0;
+    }
+
+    std::vector<std::string> groupKeyValues;          // key column values for current group
+    std::vector<std::vector<std::string>> groupDetailRows;  // buffered detail rows
+
+    // Helper: flush the current group as a main RowData with sub-table
+    auto flushGroup = [&]() {
+        if (groupDetailRows.empty()) return;
+        if (firstDetailCol < 0) return;
+
+        // Build sub-table HTML (header columns are in the main table header)
+        // Compute proportional column widths for the sub-table
+        double detailTotalWeight = 0.0;
+        for (int i = firstDetailCol; i <= lastDetailCol; i++) {
+            detailTotalWeight += fmt->def()[i]->size;
+        }
+
+        std::ostringstream subHtml;
+        subHtml << "<table class=\"sub-table\">";
+        // <colgroup> for fixed column widths matching the main table proportions
+        subHtml << "<colgroup>";
+        for (int i = firstDetailCol; i <= lastDetailCol; i++) {
+            double pct = (detailTotalWeight > 0) ? (fmt->def()[i]->size / detailTotalWeight * 100.0) : 0.0;
+            subHtml << "<col style=\"width:" << fmt::format("{:.1f}", pct) << "%\">";
+        }
+        subHtml << "</colgroup><tbody>";
+        for (auto& detailRow : groupDetailRows) {
+            subHtml << "<tr>";
+            for (size_t di = 0; di < detailRow.size(); di++) {
+                std::string v = detailRow[di];
+                if (boost::contains(v, "\n")) {
+                    boost::replace_all(v, "\n", "<br>");
+                }
+                int colIdx = firstDetailCol + (int)di;
+                bool isNum = (colIdx < nCol && fmt->def()[colIdx]->type == DB::XLSColumnFormatter::Number);
+                subHtml << "<td" << (isNum ? " class=\"text-right\"" : "") << ">" << v << "</td>";
+            }
+            subHtml << "</tr>";
+        }
+        subHtml << "</tbody></table>";
+
+        // Build main RowData
+        HtmlReportBuilder::RowData row;
+        row.cells.resize(nCol);
+        int ki = 0;
+        for (int i = startOfs; i < nCol; i++) {
+            if (keyColumns[i]) {
+                row.cells[i] = (ki < (int)groupKeyValues.size()) ? groupKeyValues[ki] : "";
+                // Handle newlines in key column values too
+                if (boost::contains(row.cells[i], "\n")) {
+                    boost::replace_all(row.cells[i], "\n", "<br>");
+                }
+                ki++;
+            }
+        }
+        row.subTableHtml = subHtml.str();
+        row.subTableStartCol = firstDetailCol;
+        row.subTableColspan = detailColspan;
+
+        builder.addRow(row);
+        groupDetailRows.clear();
+    };
+
+    // Helper: accumulate totals for a row (numeric columns only)
+    auto accumulateTotals = [&](int i, double t) {
+        auto &cdef = *fmt->def()[i];
+        cdef.pageTotal += t;
+        cdef.grandTotal += t;
+        cdef.nRecPage++;
+        cdef.nRecTotal++;
+    };
+
     while (rs->NextRow()) {
         // Create the first section only when we have data
         if (!hasRows) {
@@ -588,6 +671,8 @@ libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Shee
             auto v = String::to_string(fmt->GetString(0, true));
             if (v != currentPageTitle) {
                 if (!firstRow) {
+                    // Flush current group before computing page totals
+                    if (compareKey) flushGroup();
                     // Compute page totals for the ending section
                     computeAndSetPageTotal(builder, fmt, nCol, startOfs);
                     builder.newSection(v);
@@ -609,51 +694,83 @@ libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Shee
             }
         }
 
-        // Key comparison for grouping
         if (compareKey) {
+            // --- Grouped mode: buffer detail rows under key groups ---
+
+            // Key comparison
             for (int i = 0; i < nCol; i++) {
                 currValues[i] = String::to_string(fmt->GetString(i, true));
             }
             isSameKey = IsSameKey(keyColumns, prevValues, currValues);
+
             if (!isSameKey) {
+                // Key changed — flush previous group
+                flushGroup();
                 prevValues = currValues;
-            }
-        }
 
-        // Build row cells
-        std::vector<std::string> rowCells(nCol);
-        for (int i = 0; i < nCol; i++) {
-            auto &cdef = *fmt->def()[i];
-            std::string v = String::to_string(fmt->GetString(i, true));
+                // Start new group: collect key column values
+                groupKeyValues.clear();
+                for (int i = startOfs; i < nCol; i++) {
+                    if (keyColumns[i]) {
+                        groupKeyValues.push_back(currValues[i]);
+                    }
+                }
 
-            // Track page and grand totals for numeric columns
-            if (cdef.type == DB::XLSColumnFormatter::Number) {
-                double t = fmt->GetDouble(i);
-                cdef.pageTotal += t;
-                cdef.grandTotal += t;
-                cdef.nRecPage++;
-                cdef.nRecTotal++;
-            }
-
-            // Handle key deduplication: suppress display if same key
-            if (compareKey && keyColumns[i]) {
-                bool valueChanges = (v != prevValues[i]);
-                if (!valueChanges && !showAllKeys) {
-                    rowCells[i] = "";
-                    continue;
+                // Accumulate totals for key columns (once per group)
+                for (int i = startOfs; i < nCol; i++) {
+                    if (keyColumns[i]) {
+                        auto &cdef = *fmt->def()[i];
+                        if (cdef.type == DB::XLSColumnFormatter::Number) {
+                            double t = fmt->GetDouble(i);
+                            accumulateTotals(i, t);
+                        }
+                    }
                 }
             }
 
-            // Replace newlines with <br> for HTML rendering
-            if (boost::contains(v, "\n")) {
-                boost::replace_all(v, "\n", "<br>");
+            // Collect detail row for current group
+            std::vector<std::string> detailCells;
+            for (int i = firstDetailCol; i <= lastDetailCol; i++) {
+                std::string v = String::to_string(fmt->GetString(i, true));
+                auto &cdef = *fmt->def()[i];
+                if (cdef.type == DB::XLSColumnFormatter::Number) {
+                    double t = fmt->GetDouble(i);
+                    accumulateTotals(i, t);
+                }
+                detailCells.push_back(v);
             }
-            rowCells[i] = v;
+            groupDetailRows.push_back(std::move(detailCells));
+
+        } else {
+            // --- Flat mode (no key-columns): original row-by-row behavior ---
+
+            // Build row cells
+            std::vector<std::string> rowCells(nCol);
+            for (int i = 0; i < nCol; i++) {
+                auto &cdef = *fmt->def()[i];
+                std::string v = String::to_string(fmt->GetString(i, true));
+
+                // Track page and grand totals for numeric columns
+                if (cdef.type == DB::XLSColumnFormatter::Number) {
+                    double t = fmt->GetDouble(i);
+                    accumulateTotals(i, t);
+                }
+
+                // Replace newlines with <br> for HTML rendering
+                if (boost::contains(v, "\n")) {
+                    boost::replace_all(v, "\n", "<br>");
+                }
+                rowCells[i] = v;
+            }
+
+            builder.addRow(rowCells);
         }
 
-        builder.addRow(rowCells);
         firstRow = false;
     }
+
+    // Flush the last group (if any)
+    if (compareKey) flushGroup();
 
     // Compute page total for the last section (only if we added rows)
     if (hasRows) {
