@@ -796,21 +796,27 @@ std::string ReportGenerator::Generator::WriteToExcel(std::shared_ptr<wpSQLResult
 #endif
 
 int64_t ReportGenerator::Generator::GetReturnData(std::shared_ptr<wpSQLResultSet> rs, PPOS::ReturnData *result, ConvertFunction fnConvert) {
-    int *colDef = new int[rs->GetColumnCount()];
-    memset(colDef, -1, rs->GetColumnCount());
-    for (int i = 0; i < rs->GetColumnCount(); i++) {
-        CreateColumnDefinition(colDef, rs, i);
+    if (!rs || !result) {
+        LOG_ERROR("GetReturnData: null rs or result");
+        return 0;
+    }
+    int nCols = rs->GetColumnCount();
+    std::vector<int> colDef(nCols, -1);
+    for (int i = 0; i < nCols; i++) {
+        CreateColumnDefinition(colDef.data(), rs, i);
     }
     int64_t nRows = 0;
     try {
         result->clear_row();
         for (; rs->NextRow(); nRows++) {
             auto row = result->add_row();
-            for (int i = 0; i < rs->GetColumnCount(); i++) {
-                std::string t = fnConvert(i, ConvertRowValue(colDef, rs, i));
+            for (int i = 0; i < nCols; i++) {
+                std::string t = fnConvert ? fnConvert(i, ConvertRowValue(colDef.data(), rs, i)) : ConvertRowValue(colDef.data(), rs, i);
                 row->add_column(t);
             }
         }
+    } catch (const std::exception &e) {
+        LOG_ERROR("GetReturnData throw exception: {}", e.what());
     } catch (...) {
         LOG_ERROR("GetReturnData throw exception");
     }
