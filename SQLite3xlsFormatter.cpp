@@ -42,8 +42,6 @@
 #include "SQLite3xlsFormatter.h"
 #include <fmt/format.h>
 
-bool g_useXLSXformat = false;
-
 namespace ReportGenerator {
 
 Generator::Function Generator::GetProcessor(const std::string &cmdLine, nlohmann::json &param) {
