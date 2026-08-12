@@ -15,7 +15,6 @@ void ConsoleHandler(int);
 #endif
 
 void LoadPPOSData(const std::string &dbName);
-std::wstring GetServiceName();
 void LoadPPOSData_SetActiveDate(PharmacyDB *db);
 wxDateTime GetDate(const wxString &t);
 bool GetDate(wxDateTime &dt, const wxString &t);
