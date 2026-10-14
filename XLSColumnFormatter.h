@@ -6,6 +6,7 @@
 #include "libxl.h"
 #endif
 #include <list>
+#include <map>
 
 #include <wx/numformatter.h>
 
@@ -60,6 +61,9 @@ namespace DB {
 #endif
         static nlohmann::json emptyJSON;
         std::vector<ColumnDefinition *> defArray;
+#ifndef NO_XLS
+        std::map<libxl::Format *, libxl::Format *> wrapFormats_;
+#endif
 
     public:
         std::vector<ColumnDefinition *> &def() { return defArray; }
@@ -94,6 +98,19 @@ namespace DB {
         double GetDouble(int i);
         wxLongLong GetValue(int i);
         virtual void WriteString(long row, int col, int i, bool isHighlight = false);
+
+        // Replaces <br>, <br/> and <br /> tags with newlines (returns true if anything
+        // was replaced). Lets headings/cells that carry explicit HTML line breaks
+        // for PDF output render multi-line in Excel as well.
+        static bool ReplaceBrWithNewline(std::wstring &s);
+#ifndef NO_XLS
+        // Returns a wrap-enabled copy of the given format (cached per base format).
+        // Excel requires the wrap flag to display an embedded '\n' as a line break.
+        libxl::Format *GetWrapFormat(libxl::Format *base);
+        // writeStr for Excel output cells: converts <br> tags to newlines and uses
+        // a wrap-enabled format when a replacement happened.
+        void WriteCell(libxl::Sheet *sh, long row, int col, const std::wstring &value, libxl::Format *fmt);
+#endif
 
     public:
 #ifndef NO_XLS

@@ -316,7 +316,7 @@ libxl::Sheet *ReportGenerator::Generator::AppendGroupingToExcelSheet(ExcelReader
             dimValues[i] = formatter.GetString(i);
         }
         if (DimValueChanges(dimValues, prevDimValues, nDim - 1)) {
-            sheet->writeStr(row, 0, (std::wstring(L"   ") + dimValues[1]).c_str(), formatter.GetXLSFormat(1));
+            formatter.WriteCell(sheet, row, 0, std::wstring(L"   ") + dimValues[1], formatter.GetXLSFormat(1));
         } else {
             if (!first) {
                 // bool groupRows(int rowFirst, int rowLast, bool collapsed = true);
@@ -338,8 +338,8 @@ libxl::Sheet *ReportGenerator::Generator::AppendGroupingToExcelSheet(ExcelReader
                 fdelim = L",";
             }
             startingRow = row;
-            sheet->writeStr(row++, 0, dimValues[0].c_str(), formatter.GetXLSFormat(0, true));
-            sheet->writeStr(row, 0, (std::wstring(L"   ") + dimValues[1]).c_str(), formatter.GetXLSFormat(1));
+            formatter.WriteCell(sheet, row++, 0, dimValues[0], formatter.GetXLSFormat(0, true));
+            formatter.WriteCell(sheet, row, 0, std::wstring(L"   ") + dimValues[1], formatter.GetXLSFormat(1));
             first = false;
             prevDimValues = dimValues;
         }
@@ -415,7 +415,7 @@ libxl::Sheet *ReportGenerator::Generator::AppendToExcelSheet(ExcelReader *xlsRea
                 if (formatter.IsNumber(i) || String::IsNumeric(v))
                     sheet->writeNum(row, col, String::ToDouble(v), formatter.GetXLSFormat(i));
                 else
-                    sheet->writeStr(row, col, v.c_str(), formatter.GetXLSFormat(i));
+                    formatter.WriteCell(sheet, row, col, v, formatter.GetXLSFormat(i));
             }
         }
     }

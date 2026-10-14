@@ -125,11 +125,45 @@ void DB::XLSColumnFormatter::WriteString(long row, int col, int i, bool isHighli
         if (cdef.type == Number)
             sheet->writeNum(row, col, String::ToDouble(v), isHighlight ? cdef.fmtHighlight : cdef.fmt);
         else {
-            sheet->writeStr(row, col, v.c_str(), isHighlight ? cdef.fmtHighlight : cdef.fmt);
+            WriteCell(sheet, row, col, v, isHighlight ? cdef.fmtHighlight : cdef.fmt);
         }
     }
 #endif
 }
+
+bool DB::XLSColumnFormatter::ReplaceBrWithNewline(std::wstring &s) {
+    bool replaced = false;
+    // <br/> variants must be replaced before plain <br> so no '/' is left behind
+    for (const wchar_t *tag : {L"<br/>", L"<br />", L"<br>"}) {
+        if (boost::icontains(s, tag)) {
+            boost::ireplace_all(s, tag, L"\n");
+            replaced = true;
+        }
+    }
+    return replaced;
+}
+
+#ifndef NO_XLS
+libxl::Format *DB::XLSColumnFormatter::GetWrapFormat(libxl::Format *base) {
+    auto it = wrapFormats_.find(base);
+    if (it != wrapFormats_.end()) return it->second;
+    if (!xlr || !xlr->book) return base;
+    libxl::Format *f = xlr->book->addFormat(base);
+    if (!f) return base;
+    f->setWrap(true);
+    wrapFormats_[base] = f;
+    return f;
+}
+
+void DB::XLSColumnFormatter::WriteCell(libxl::Sheet *sh, long row, int col, const std::wstring &value, libxl::Format *fmt) {
+    if (!sh) return;
+    std::wstring v(value);
+    if (ReplaceBrWithNewline(v))
+        sh->writeStr(row, col, v.c_str(), GetWrapFormat(fmt));
+    else
+        sh->writeStr(row, col, v.c_str(), fmt);
+}
+#endif
 
 nlohmann::json DB::XLSColumnFormatter::emptyJSON;
 
@@ -319,10 +353,10 @@ DB::XLSColumnFormatter::XLSColumnFormatter(void *, void *, std::shared_ptr<wpSQL
         if (sheet && xlr) {
             if (i < nDim) {
                 actualColumnName.append((i == 0 ? L"" : L"/") + cdef.colName);
-                if (sheet) sheet->writeStr(row, col, actualColumnName.c_str(), xlr->fmt);
+                if (sheet) WriteCell(sheet, row, col, actualColumnName, xlr->fmt);
             } else {
                 if (i == nDim && nDim > 0) col = 1;
-                if (sheet) sheet->writeStr(row, col++, cdef.colName.c_str(), xlr->fmt);
+                if (sheet) WriteCell(sheet, row, col++, cdef.colName, xlr->fmt);
             }
             if (freezeHeader) sheet->split(row + 1, 0);  // freeze headers
             cdef.fmtHighlight = xlr->book->addFormat(cdef.fmt);
