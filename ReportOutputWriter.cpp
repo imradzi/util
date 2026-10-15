@@ -48,6 +48,12 @@ bool ExcelOutputWriter::HasSection() const {
     return sheet_ != nullptr;
 }
 
+bool ExcelOutputWriter::NewSectionPerResultSet() const {
+    // Excel appends subsequent result sets into the same sheet; the caller
+    // starts a new sheet when sheet_type is "multi".
+    return false;
+}
+
 std::wstring ExcelOutputWriter::Save(const std::wstring& baseName,
                                      bool dataExists,
                                      const std::string& noDataText,
@@ -117,6 +123,12 @@ bool PdfOutputWriter::AcceptsDirective(const std::string& directive) const {
 
 bool PdfOutputWriter::HasSection() const {
     return pdfReport_ != nullptr;
+}
+
+bool PdfOutputWriter::NewSectionPerResultSet() const {
+    // Each PDF result set has its own column layout, so every result set gets
+    // its own section (which rebuilds the formatter/columns for that query).
+    return true;
 }
 
 std::wstring PdfOutputWriter::Save(const std::wstring& baseName,

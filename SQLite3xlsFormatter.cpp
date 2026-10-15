@@ -543,6 +543,17 @@ libxl::Sheet *ReportGenerator::Generator::AppendToPDF(ExcelReader *, libxl::Shee
     fmt->SetResultSet(rs);
 
     const int nCol = rs->GetColumnCount();
+
+    // The formatter is (re)built per result set by CreateNewPDF /
+    // HtmlReportBuilder_CreateNewSection, so the column counts must match.
+    // Never index past the column definitions — out-of-bounds access here
+    // used to crash the server (segfault) when a later result set had more
+    // columns than the one the formatter was built from.
+    if ((int)fmt->def().size() < nCol) {
+        LOG_ERROR("AppendToPDF: result set has {} columns but the formatter was built with {} — rebuilding definitions is required", nCol, fmt->def().size());
+        throw std::runtime_error(fmt::format("AppendToPDF: column count mismatch (result set has {} columns, formatter has {})", nCol, fmt->def().size()));
+    }
+
     int startOfs = (builder.breakPageOn() ? 1 : 0);
 
     // Check for formula columns
@@ -970,8 +981,13 @@ std::vector<std::vector<std::string>> ReportGenerator::Generator::GetVectorResul
 
 } // namespace ReportGenerator
 
-// CreateNewSection for HtmlReportBuilder — called from PdfOutputWriter for multi-section reports
-void HtmlReportBuilder_CreateNewSection(HtmlReportBuilder &builder, DB::SQLiteBase &/*db*/, std::shared_ptr<wpSQLResultSet> rs, const std::string &orientation, const std::string &sName, const std::string &ttl, const std::string &sTtl, nlohmann::json &param) {
+// CreateNewSection for HtmlReportBuilder — called from PdfOutputWriter for each
+// result set in PDF mode. Rebuilds the formatter and column definitions so the
+// next section renders with THIS result set's columns (reports may have several
+// queries with different column layouts). The section itself is created lazily
+// by AppendToPDF when the first row arrives, exactly like the first section, so
+// an empty result set does not produce an empty page.
+void HtmlReportBuilder_CreateNewSection(HtmlReportBuilder &builder, DB::SQLiteBase &/*db*/, std::shared_ptr<wpSQLResultSet> rs, const std::string &orientation, const std::string &/*sName*/, const std::string &ttl, const std::string &sTtl, nlohmann::json &param) {
     LOG_INFO("HtmlReportBuilder_CreateNewSection");
     if (boost::iequals(orientation, "Landscape") || boost::iequals(orientation, "L"))
         builder.setOrientation("Landscape");
@@ -999,6 +1015,7 @@ void HtmlReportBuilder_CreateNewSection(HtmlReportBuilder &builder, DB::SQLiteBa
     builder.setBreakPageOn(param.contains("break-page"));
     builder.setFormatterPtr(c);
 
-    // Start a new section
-    builder.newSection(sName);
+    // Drop key-column state from the previous result set; AppendToPDF re-applies
+    // it from @key-columns when this result set uses them.
+    builder.setKeyColumns({});
 }

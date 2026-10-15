@@ -42,6 +42,12 @@ public:
     // Returns true if a section/sheet has been started (i.e. CreateNewSection was called at least once).
     virtual bool HasSection() const = 0;
 
+    // Returns true if every result set must start its own section/page group.
+    // PDF reports: each query has its own column layout, so the formatter/columns
+    // are rebuilt for each result set. Excel reports keep appending result sets to
+    // the same sheet unless sheet_type is "multi" (handled by the caller).
+    virtual bool NewSectionPerResultSet() const = 0;
+
     // Save the report to a file. Returns the full file path with extension.
     // Handles the "no data" case internally.
     virtual std::wstring Save(const std::wstring& baseName,
@@ -80,6 +86,7 @@ public:
     void SetGenerator(const std::string& directive, nlohmann::json& param) override;
     bool AcceptsDirective(const std::string& directive) const override;
     bool HasSection() const override;
+    bool NewSectionPerResultSet() const override;
 
     std::wstring Save(const std::wstring& baseName,
                       bool dataExists,
@@ -116,6 +123,7 @@ public:
     void SetGenerator(const std::string& directive, nlohmann::json& param) override;
     bool AcceptsDirective(const std::string& directive) const override;
     bool HasSection() const override;
+    bool NewSectionPerResultSet() const override;
 
     std::wstring Save(const std::wstring& baseName,
                       bool dataExists,
