@@ -126,8 +126,6 @@ std::string UsingBoost::encode(const std::string& input) {
 
 // Base64 Decoding
 std::string UsingBoost::decode(const std::string& input) {
-    using namespace boost::archive::iterators;
-
     // Create a sanitized copy without non-Base64 characters
     std::string sanitized;
     std::copy_if(input.begin(), input.end(), std::back_inserter(sanitized),
@@ -135,21 +133,22 @@ std::string UsingBoost::decode(const std::string& input) {
             return isalnum(c) || c == '+' || c == '/' || c == '=';
         });
 
-    // Calculate padding to remove
-    size_t padding = std::count(sanitized.begin(), sanitized.end(), '=');
-    sanitized.erase(std::remove(sanitized.begin(), sanitized.end(), '='), sanitized.end());
-
-    using Base64Decoder = transform_width<binary_from_base64<std::string::const_iterator>, 8, 6>;
-
-    try {
-        std::string decoded(Base64Decoder(sanitized.begin()), Base64Decoder(sanitized.end()));
-
-        // Remove null bytes added during padding calculations
-        decoded.erase(decoded.end() - padding, decoded.end());
-        return decoded;
-    } catch (const boost::archive::iterators::dataflow_exception&) {
+    if (sanitized.empty()) {
+        if (input.empty()) return "";
         throw std::runtime_error("Invalid base64 input");
     }
+
+    // Beast's decoder handles padding correctly; the transform_width recipe
+    // used here before over-trimmed the last bytes (and segfaulted on '=').
+    std::string decoded;
+    decoded.resize(boost::beast::detail::base64::decoded_size(sanitized.size()));
+    auto [written, consumed] =
+        boost::beast::detail::base64::decode(decoded.data(), sanitized.data(), sanitized.size());
+    if (consumed == 0) {
+        throw std::runtime_error("Invalid base64 input");
+    }
+    decoded.resize(written);
+    return decoded;
 }
 
 // std::string UsingBoost::sha256(const std::string &input) {
