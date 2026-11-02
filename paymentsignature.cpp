@@ -194,4 +194,32 @@ std::string BillplzXSignature(const std::string& signatureKey,
     return HmacSha256Hex(signatureKey, BillplzSource(params));
 }
 
+namespace {
+
+std::string Md5Hex(const std::string& data) {
+    unsigned char digest[EVP_MAX_MD_SIZE];
+    unsigned int len = 0;
+    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+    if (!ctx) return {};
+    EVP_DigestInit_ex(ctx, EVP_md5(), nullptr);
+    EVP_DigestUpdate(ctx, data.data(), data.size());
+    EVP_DigestFinal_ex(ctx, digest, &len);
+    EVP_MD_CTX_free(ctx);
+    static const char* hex = "0123456789abcdef";
+    std::string out;
+    out.reserve(len * 2);
+    for (unsigned int i = 0; i < len; ++i) {
+        out.push_back(hex[digest[i] >> 4]);
+        out.push_back(hex[digest[i] & 0x0F]);
+    }
+    return out;
+}
+
+} // namespace
+
+std::string ToyyibPayHash(const std::string& secretKey, const std::string& status,
+                          const std::string& orderId, const std::string& refNo) {
+    return Md5Hex(secretKey + status + orderId + refNo + "ok");
+}
+
 } // namespace PaymentSignature

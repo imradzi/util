@@ -31,4 +31,8 @@ std::string BillplzSource(const std::map<std::string, std::string>& params);
 std::string BillplzXSignature(const std::string& signatureKey,
                               const std::map<std::string, std::string>& params);
 
+/// ToyyibPay callback hash: lowercase-hex MD5(secret + status + order_id + refno + "ok").
+std::string ToyyibPayHash(const std::string& secretKey, const std::string& status,
+                          const std::string& orderId, const std::string& refNo);
+
 } // namespace PaymentSignature
