@@ -1,6 +1,12 @@
 #include "csvparser.h"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 namespace CsvParser {
 
@@ -14,6 +20,71 @@ std::string StripBom(const std::string& value) {
         return value.substr(3);
     }
     return value;
+}
+
+void AppendUtf8(std::string& out, unsigned int codePoint) {
+    if (codePoint < 0x80) {
+        out.push_back(static_cast<char>(codePoint));
+    } else if (codePoint < 0x800) {
+        out.push_back(static_cast<char>(0xC0 | (codePoint >> 6)));
+        out.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+    } else if (codePoint < 0x10000) {
+        out.push_back(static_cast<char>(0xE0 | (codePoint >> 12)));
+        out.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+    } else {
+        out.push_back(static_cast<char>(0xF0 | (codePoint >> 18)));
+        out.push_back(static_cast<char>(0x80 | ((codePoint >> 12) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+    }
+}
+
+std::string Utf16ToUtf8(const std::string& bytes, size_t offset, bool bigEndian) {
+    std::string out;
+    out.reserve(bytes.size());
+    auto unitAt = [&](size_t index) -> unsigned int {
+        const auto lo = static_cast<unsigned char>(bytes[index]);
+        const auto hi = static_cast<unsigned char>(bytes[index + 1]);
+        return bigEndian ? (static_cast<unsigned int>(lo) << 8) | hi
+                         : (static_cast<unsigned int>(hi) << 8) | lo;
+    };
+    for (size_t i = offset; i + 1 < bytes.size(); i += 2) {
+        unsigned int unit = unitAt(i);
+        if (unit >= 0xD800 && unit <= 0xDBFF && i + 3 < bytes.size()) {
+            const unsigned int low = unitAt(i + 2);
+            if (low >= 0xDC00 && low <= 0xDFFF) {
+                AppendUtf8(out, 0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00));
+                i += 2;
+                continue;
+            }
+        }
+        if (unit == 0xFEFF) continue;  // stray BOM
+        AppendUtf8(out, unit);
+    }
+    return out;
+}
+
+/// BOM-less UTF-16 shows up as every other byte being NUL for ASCII text.
+bool LooksLikeUtf16(const std::string& bytes, bool& bigEndian) {
+    const size_t limit = std::min<size_t>(bytes.size(), 4096);
+    if (limit < 4) return false;
+    size_t evenNul = 0, oddNul = 0;
+    for (size_t i = 0; i < limit; ++i) {
+        if (bytes[i] != '\0') continue;
+        if (i % 2 == 0) ++evenNul;
+        else ++oddNul;
+    }
+    const size_t pairs = limit / 2;
+    if (oddNul > pairs / 2 && evenNul < pairs / 8) {  // "a\0b\0" = UTF-16LE
+        bigEndian = false;
+        return true;
+    }
+    if (evenNul > pairs / 2 && oddNul < pairs / 8) {  // "\0a\0b" = UTF-16BE
+        bigEndian = true;
+        return true;
+    }
+    return false;
 }
 
 } // namespace
@@ -147,6 +218,69 @@ Table Parse(const std::string& content, char delimiter, bool firstRowIsHeader) {
     }
     table.rows = std::move(rows);
     return table;
+}
+
+bool ReadAllText(const std::string& path, std::string& out, std::string* error) {
+    out.clear();
+#ifdef _WIN32
+    // The path is UTF-8 (as written into the import spec by ppSetup). Opening a
+    // char* path would use the ANSI code page, which breaks any accented or
+    // non-Latin folder name, so hand std::ifstream a wide path instead.
+    std::wstring widePath;
+    {
+        const int length =
+            MultiByteToWideChar(CP_UTF8, 0, path.data(), static_cast<int>(path.size()), nullptr, 0);
+        if (length > 0) {
+            widePath.resize(static_cast<size_t>(length));
+            MultiByteToWideChar(CP_UTF8, 0, path.data(), static_cast<int>(path.size()),
+                                widePath.data(), length);
+        }
+    }
+    std::ifstream file(widePath.empty() ? std::filesystem::path(path) : std::filesystem::path(widePath),
+                       std::ios::binary);
+#else
+    std::ifstream file(path, std::ios::binary);
+#endif
+    if (!file) {
+        if (error) *error = "cannot open " + path;
+        return false;
+    }
+    std::string bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    if (file.bad()) {
+        if (error) *error = "cannot read " + path;
+        return false;
+    }
+
+    if (bytes.size() >= 3 && static_cast<unsigned char>(bytes[0]) == 0xEF &&
+        static_cast<unsigned char>(bytes[1]) == 0xBB &&
+        static_cast<unsigned char>(bytes[2]) == 0xBF) {
+        out = bytes.substr(3);  // UTF-8 with BOM
+        return true;
+    }
+    if (bytes.size() >= 2 && static_cast<unsigned char>(bytes[0]) == 0xFF &&
+        static_cast<unsigned char>(bytes[1]) == 0xFE) {
+        out = Utf16ToUtf8(bytes, 2, false);  // UTF-16 LE
+        return true;
+    }
+    if (bytes.size() >= 2 && static_cast<unsigned char>(bytes[0]) == 0xFE &&
+        static_cast<unsigned char>(bytes[1]) == 0xFF) {
+        out = Utf16ToUtf8(bytes, 2, true);  // UTF-16 BE
+        return true;
+    }
+    bool bigEndian = false;
+    if (LooksLikeUtf16(bytes, bigEndian)) {
+        out = Utf16ToUtf8(bytes, 0, bigEndian);
+        return true;
+    }
+    out = std::move(bytes);
+    return true;
+}
+
+Table ParseFile(const std::string& path, char delimiter, bool firstRowIsHeader,
+                std::string* error) {
+    std::string content;
+    if (!ReadAllText(path, content, error)) return Table{};
+    return Parse(content, delimiter, firstRowIsHeader);
 }
 
 } // namespace CsvParser

@@ -28,4 +28,15 @@ std::vector<std::string> ParseLine(const std::string& line, char delimiter);
 Table Parse(const std::string& content, char delimiter = 0,
             bool firstRowIsHeader = true);
 
+/// Read a whole file as UTF-8 text. Handles a UTF-8 BOM, UTF-16 LE/BE with a
+/// BOM and (as a safety net) BOM-less UTF-16 that the NUL-byte pattern gives
+/// away; anything else is returned byte-for-byte (e.g. Windows-1252 files).
+/// Returns false when the file cannot be read; `error` then carries a message.
+bool ReadAllText(const std::string& path, std::string& out, std::string* error = nullptr);
+
+/// ReadAllText + Parse. Used by the master-data importer, which must apply the
+/// exact same decoding and quoting rules as the setup preview.
+Table ParseFile(const std::string& path, char delimiter = 0, bool firstRowIsHeader = true,
+                std::string* error = nullptr);
+
 } // namespace CsvParser
