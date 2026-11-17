@@ -55,7 +55,10 @@ inline const std::vector<FieldDef>& Fields(Kind kind) {
     static const std::vector<FieldDef> stock = {
         {"code", "Stock code", true, false},
         {"name", "Description / name", true, false},
+        {"regNo", "Registration No (MAL)", false, false},
         {"type", "Stock type (normalised into Types)", false, false},
+        {"poisonCategory", "Poison category (Drug Schedule A / B / C)", false, false},
+        {"isPoison", "Poison item (yes / no)", false, false},
         {"category", "Stock category", false, false},
         {"packSize", "Units per pack", false, true},
         {"packPrice", "Selling price per pack", false, true},
@@ -68,7 +71,7 @@ inline const std::vector<FieldDef>& Fields(Kind kind) {
         {"reorderQty", "Reorder quantity", false, true},
         {"barcode", "Barcode", false, false},
         {"brand", "Brand", false, false},
-        {"genericName", "Generic name", false, false},
+        {"genericName", "Generic / chemical name", false, false},
         {"strength", "Strength", false, false},
         {"remark", "Remark", false, false},
     };
@@ -100,7 +103,7 @@ inline const std::vector<FieldDef>& Fields(Kind kind) {
     static const std::vector<FieldDef> customer = {
         {"code", "Customer code", false, false},
         {"name", "Name", true, false},
-        {"ic", "IC / registration number", false, false},
+        {"ic", "IC / Registration No (SSM)", false, false},
         {"email", "Email", false, false},
         {"telNo", "Telephone", false, false},
         {"faxNo", "Fax", false, false},
@@ -121,6 +124,7 @@ inline const std::vector<FieldDef>& Fields(Kind kind) {
     static const std::vector<FieldDef> supplier = {
         {"code", "Supplier code", false, false},
         {"name", "Name", true, false},
+        {"ic", "Registration No (SSM)", false, false},
         {"contact", "Contact person", false, false},
         {"telNo", "Telephone", false, false},
         {"faxNo", "Fax", false, false},
