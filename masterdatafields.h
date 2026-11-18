@@ -73,6 +73,9 @@ inline const std::vector<FieldDef>& Fields(Kind kind) {
         {"brand", "Brand", false, false},
         {"genericName", "Generic / chemical name", false, false},
         {"strength", "Strength", false, false},
+        // Shelf / location code. The client keeps shelves as entities linked to
+        // the item (Stock Edit -> Shelf tab), so this maps to that list.
+        {"shelfNo", "Shelf / location code", false, false},
         {"remark", "Remark", false, false},
     };
 
