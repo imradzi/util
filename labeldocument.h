@@ -39,6 +39,9 @@ struct Profile {
 
 struct Text {
     Rect rect;
+    /// Background rectangle for inverted text. TSPL draws TEXT then a separate
+    /// REVERSE box, and that box must span the whole line, not just the text.
+    Rect box;
     std::string text;
     std::string fontCode;  // printer font id ("2", "A", ...)
     int rotation {0};
