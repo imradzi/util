@@ -20,7 +20,8 @@ struct Rect {
     int h {0};
 };
 
-/// Page geometry, already converted to printer dots.
+/// Page geometry as printer dots plus the physical size in millimetres
+/// (some languages take millimetres, others dots).
 struct Profile {
     int widthDots {0};
     int heightDots {0};
@@ -30,6 +31,10 @@ struct Profile {
     int dpi {203};
     int copies {1};
     bool fromTop {true};
+    double widthMm {0};
+    double heightMm {0};
+    double gapXMm {0};
+    double gapYMm {0};
 };
 
 struct Text {
