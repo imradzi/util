@@ -57,6 +57,7 @@ inline const std::vector<FieldDef>& Fields(Kind kind) {
         {"name", "Description / name", true, false},
         {"regNo", "Registration No (MAL)", false, false},
         {"type", "Stock type (normalised into Types)", false, false},
+        {"packType", "Packaging type (BOX, STRIP, BOTTLE...)", false, false},
         {"poisonCategory", "Poison category (Drug Schedule A / B / C)", false, false},
         {"isPoison", "Poison item (yes / no)", false, false},
         {"category", "Stock category", false, false},
