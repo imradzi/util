@@ -48,6 +48,10 @@ struct Text {
     int scaleX {1};
     int scaleY {1};
     bool reverse {false};  // draw the text inverted (white on black)
+    /// Horizontal alignment inside `box`: -1 left, 0 centre, 1 right. Languages
+    /// with a justification token (ZPL ^FO x,y,j) use it; the others already
+    /// carry the alignment in rect.x.
+    int hAlign {0};
 };
 
 struct Barcode {
