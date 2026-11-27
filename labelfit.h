@@ -26,6 +26,10 @@ struct Options {
     bool dispensing {false};
     bool hasWarning {false};
     bool isPoison {false};
+    /// Body lines the item description actually needs, wrapped for the label
+    /// width. 0 means "unknown" (the settings preview) and asks for two lines.
+    /// A QR code that would squeeze the name below that is shrunk instead.
+    int nameLinesNeeded {0};
 };
 
 struct Result {

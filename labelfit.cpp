@@ -59,6 +59,13 @@ Result Compute(int widthDots, int heightDots, const Fonts& fonts, const Options&
     int barcodeHeight = BarcodeBlockHeight(heightDots, fonts);
     int qrCell = ClampInt(std::min(widthDots, heightDots) / 60, 2, 6);
 
+    // The description is the only block that cannot be placed without knowing
+    // how much room it needs, so the caller passes the wrapped line count. When
+    // the caller does not know (the settings preview) two lines are assumed: a
+    // single line is usually just the "[code] " prefix and the item name never
+    // reaches the label.
+    const int desiredNameLines = options.nameLinesNeeded > 0 ? options.nameLinesNeeded : 2;
+
     // Fixed blocks only: the price is pinned to the bottom edge (with the item
     // id line just above it) and the barcode/QR keeps the position the setting
     // asks for - at the top, or in the lower half directly above the price
@@ -91,6 +98,14 @@ Result Compute(int widthDots, int heightDots, const Fonts& fonts, const Options&
         result.nameTop = top;
         const int nameLines = (bottom - result.gap - top) / lineHeight;
         if (nameLines >= 1) {
+            // A QR code is the one block that can give the description room
+            // back without losing anything else: shrink its cells while the
+            // name still needs more lines than are left, and stop at the
+            // smallest cell that still scans (2 dots per module).
+            if (options.useQR && qrCell > 2 && nameLines < desiredNameLines) {
+                qrCell--;
+                continue;
+            }
             result.nameLines = nameLines;
             result.nameBlockHeight = nameLines * lineHeight;
             result.barcodeHeight = barcodeHeight;
