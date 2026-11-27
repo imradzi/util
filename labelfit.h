@@ -42,6 +42,16 @@ struct Result {
     int bannerHeight {0};
     int nameLines {1};
     int nameBlockHeight {0};
+
+    /// Top of every block in dots, measured from the top of the printable
+    /// area. The price tag pins the price to the bottom edge, so the blocks
+    /// can no longer be stacked one after another: the printer and the
+    /// settings preview both draw at these positions.
+    int bannerTop {0};
+    int barcodeTop {0};
+    int nameTop {0};
+    int priceTop {0};
+    int idTop {0};
     int packHeight {0};
     int priceHeight {0};
     int idHeight {0};
@@ -58,8 +68,10 @@ struct Result {
     std::vector<std::string> dropped;
 };
 
-/// Price-tag layout: banner, item name, pack description, id text, price and
-/// either a 1-D barcode or a QR code.
+/// Price-tag layout: the banner and the barcode/QR keep the position the
+/// settings ask for (top, or above the price when `printBarcodeFirst` is off),
+/// the price is anchored to the bottom edge with the item id line above it,
+/// and the item name wraps into every line that is left in between.
 Result Compute(int widthDots, int heightDots, const Fonts& fonts, const Options& options);
 
 /// Dispensing label: patient, item, instruction, quantity/barcode and the

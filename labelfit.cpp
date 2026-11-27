@@ -43,7 +43,9 @@ Result Compute(int widthDots, int heightDots, const Fonts& fonts, const Options&
     result.gap = GapFor(widthDots, heightDots);
     result.bannerHeight = fonts.bannerHeight + 2;
     result.packHeight = fonts.bodyHeight;
-    result.priceHeight = fonts.priceHeight + 2;
+    // The pack description shares the price line, so the block is as tall as
+    // the taller of the two.
+    result.priceHeight = std::max(fonts.priceHeight + 2, fonts.bodyHeight);
     result.idHeight = fonts.tinyHeight;
     const int lineHeight = fonts.bodyHeight + std::max(0, fonts.lineGap);
 
@@ -54,28 +56,47 @@ Result Compute(int widthDots, int heightDots, const Fonts& fonts, const Options&
         result.dropped.emplace_back("pack description hidden - label is too short");
     }
 
-    int nameLines = heightDots >= 30 * options.dotsPerMm ? 3
-                    : (heightDots >= 19 * options.dotsPerMm ? 2 : 1);
     int barcodeHeight = BarcodeBlockHeight(heightDots, fonts);
     int qrCell = ClampInt(std::min(widthDots, heightDots) / 60, 2, 6);
 
+    // Fixed blocks only: the price is pinned to the bottom edge (with the item
+    // id line just above it) and the barcode/QR keeps the position the setting
+    // asks for - at the top, or in the lower half directly above the price
+    // when "barcode first" is off. The item name takes every line that is left
+    // between them, so a long description never runs into another block.
     for (;;) {
         const int qrHeight = options.useQR ? QrBlockHeight(qrCell) : 0;
         const int barcodeBlock = options.useQR ? qrHeight : barcodeHeight;
-        const int total = result.gap * 4 +
-                          (result.showBanner ? result.bannerHeight : 0) +
-                          nameLines * lineHeight +
-                          (result.showPack ? result.packHeight : 0) +
-                          (result.showId ? result.idHeight : 0) +
-                          result.priceHeight +
-                          barcodeBlock;
-        if (total <= heightDots) {
+
+        result.bannerTop = 0;
+        int top = 0;
+        if (result.showBanner) top = result.bannerHeight + result.gap;
+
+        int bottom = heightDots;
+        result.priceTop = bottom - result.priceHeight;
+        bottom = result.priceTop;
+        result.idTop = bottom;
+        if (result.showId) {
+            result.idTop = bottom - result.idHeight;
+            bottom = result.idTop;
+        }
+        if (options.printBarcodeFirst) {
+            result.barcodeTop = top;
+            top += barcodeBlock + result.gap;
+        } else {
+            result.barcodeTop = bottom - barcodeBlock;
+            bottom = result.barcodeTop;
+        }
+
+        result.nameTop = top;
+        const int nameLines = (bottom - result.gap - top) / lineHeight;
+        if (nameLines >= 1) {
             result.nameLines = nameLines;
             result.nameBlockHeight = nameLines * lineHeight;
             result.barcodeHeight = barcodeHeight;
             result.qrCell = options.useQR ? qrCell : 0;
             result.qrHeight = qrHeight;
-            result.contentHeight = total;
+            result.contentHeight = heightDots;
             return result;
         }
 
@@ -87,11 +108,6 @@ Result Compute(int widthDots, int heightDots, const Fonts& fonts, const Options&
         if (result.showPack) {
             result.showPack = false;
             result.dropped.emplace_back("pack description hidden - label is too short");
-            continue;
-        }
-        if (nameLines > 1) {
-            nameLines--;
-            result.dropped.emplace_back("item name reduced to fit the label height");
             continue;
         }
         if (result.showBanner) {
@@ -112,7 +128,7 @@ Result Compute(int widthDots, int heightDots, const Fonts& fonts, const Options&
 
         result.refused = true;
         result.refusalReason =
-            "the label is too small for the item name, price and barcode. "
+            "the label is too small for one line of the item name, the price and the barcode. "
             "Increase the label size in Label Printer Settings.";
         result.nameLines = 1;
         result.nameBlockHeight = lineHeight;
